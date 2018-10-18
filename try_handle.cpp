@@ -1,4 +1,4 @@
-#include "try_handle.hpp"
+#include <eosio/kafka_plugin/try_handle.hpp>
 
 namespace kafka {
 

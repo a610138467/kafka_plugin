@@ -1,8 +1,8 @@
-#include "kafka.hpp"
+#include <eosio/kafka_plugin/kafka.hpp>
+#include <eosio/kafka_plugin/try_handle.hpp>
 
 #include <fc/io/json.hpp>
 
-#include "try_handle.hpp"
 
 namespace std {
 template<> struct hash<kafka::bytes> {

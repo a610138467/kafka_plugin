@@ -1,9 +1,8 @@
-#include "kafka_plugin.hpp"
-
 #include <fc/io/json.hpp>
 
-#include "kafka.hpp"
-#include "try_handle.hpp"
+#include <eosio/kafka_plugin/kafka_plugin.hpp>
+#include <eosio/kafka_plugin/kafka.hpp>
+#include <eosio/kafka_plugin/try_handle.hpp>
 
 namespace eosio {
 

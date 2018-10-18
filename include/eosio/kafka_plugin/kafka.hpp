@@ -4,7 +4,7 @@
 
 #include <eosio/chain_plugin/chain_plugin.hpp>
 
-#include "types.hpp"
+#include <eosio/kafka_plugin/types.hpp>
 
 namespace kafka {
 

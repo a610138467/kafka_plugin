@@ -114,6 +114,7 @@ private:
             string::size_type pos = class_name.find(replace_from);
             while (pos != string::npos) {
                 class_name = class_name.replace(pos, sizeof(replace_from) - 1, replace_to);
+                pos = class_name.find(replace_from);
             }
             value = prefix + "_" + class_name;
         }

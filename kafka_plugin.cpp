@@ -1,165 +1,208 @@
-#include <fc/io/json.hpp>
-
+#include <queue>
+#include <vector>
 #include <eosio/kafka_plugin/kafka_plugin.hpp>
-#include <eosio/kafka_plugin/kafka.hpp>
-#include <eosio/kafka_plugin/try_handle.hpp>
 
 namespace eosio {
 
-using namespace std;
+namespace kafka {
 
-namespace bpo = boost::program_options;
-using bpo::options_description;
-using bpo::variables_map;
+    Block::Block (const block_state_ptr& block_state, bool irreversible) :
+        id (block_state->id.data(), block_state->id.data() + sizeof(block_id_type)),
+        irreversible (irreversible),
+        block_id (block_state->id),
+        block_previous (block_state->header.previous),
+        block_num (block_state->block_num),
+        block_producer (block_state->header.producer),
+        block_timestamp (block_state->header.timestamp),
+        block (fc::raw::pack(block_state->block))
+    {
+        const char* stuff = "";
+        if (irreversible)
+            stuff = irreversible_stuff;
+        else 
+            stuff = reversible_stuff;
+        
+        id.push_back('|');
+        id.insert(id.end(), stuff, stuff + strlen(stuff));
 
-using kafka::handle;
+        time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+        create_timestamp = now.time_since_epoch().count();
+    }
+    
+    Transaction::Transaction (const block_state_ptr& block_state, uint16_t sequence,  bool irreversible) :
+        id (block_state->id.data(), block_state->id.data() + sizeof(block_id_type)),
+        irreversible (irreversible),
+        block_id (block_state->id),
+        block_num (block_state->block_num),
+        block_sequence (sequence),
+        transaction (fc::raw::pack(block_state->block->transactions[sequence]))
+    {
+        transaction_receipt& receipt = block_state->block->transactions[sequence]; 
 
-enum class compression_codec {
-    none,
-    gzip,
-    snappy,
-    lz4
-};
+        transaction_cpu_usage_us = receipt.cpu_usage_us;
+        transaction_net_usage_words = receipt.net_usage_words;
+        if (receipt.trx.contains<transaction_id_type>()) {
+            transaction_id = receipt.trx.get<transaction_id_type>();
+        } else {
+            auto signed_trx = receipt.trx.get<packed_transaction>().get_signed_transaction();
+            transaction_id = signed_trx.id();
+            transaction_expiration = signed_trx.expiration;
+            transaction_delay_sec = signed_trx.delay_sec;
+        }
+        
+        id.push_back('_');
+        id.insert(id.end(), (char*)(&sequence), (char*)(&sequence) + sizeof(sequence));
 
-std::istream& operator>>(std::istream& in, compression_codec& codec) {
-    std::string s;
-    in >> s;
-    if (s == "none") codec = compression_codec::none;
-    else if (s == "gzip") codec = compression_codec::gzip;
-    else if (s == "snappy") codec = compression_codec::snappy;
-    else if (s == "lz4") codec = compression_codec::lz4;
-    else in.setstate(std::ios_base::failbit);
-    return in;
+        const char* stuff = "";
+        if (irreversible)
+            stuff = irreversible_stuff;
+        else 
+            stuff = reversible_stuff;
+        id.push_back('|');
+        id.insert(id.end(), stuff, stuff + strlen(stuff));
+
+        time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+        create_timestamp = now.time_since_epoch().count();
+    }
+
+    Action::Action (const transaction_trace_ptr& trace, int sequence) :
+        parent (0),
+        transaction_id (trace->id),
+        action_sequence (sequence)
+    {
+        const action_trace& atrace = trace->action_traces[sequence];
+        account = atrace.act.account;
+        name = atrace.act.name;
+        data = atrace.act.data;
+        receiver = atrace.receipt.receiver;
+        global_sequence = atrace.receipt.global_sequence;
+        recv_sequence = atrace.receipt.recv_sequence;
+
+        id.insert (id.end(), (char*)(&global_sequence), (char*)(&global_sequence) + sizeof(global_sequence));
+        time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+        create_timestamp = now.time_since_epoch().count();
+    }
+
+    Action::Action (const Action& action, const action_trace& trace, int sequence) :
+        parent (action.id),
+        transaction_id (action.transaction_id),
+        action_sequence (sequence)
+    {
+        const action_trace& atrace = trace.inline_traces[sequence];
+        account = atrace.act.account;
+        name = atrace.act.name;
+        data = atrace.act.data;
+        receiver = atrace.receipt.receiver;
+        global_sequence = atrace.receipt.global_sequence;
+        recv_sequence = atrace.receipt.recv_sequence;
+
+        id.insert (id.end(), (char*)(&global_sequence), (char*)(&global_sequence) + sizeof(global_sequence));
+        time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+        create_timestamp = now.time_since_epoch().count();
+    }
 }
 
 static appbase::abstract_plugin& _kafka_relay_plugin = app().register_plugin<kafka_plugin>();
 
-kafka_plugin::kafka_plugin() : kafka_(std::make_unique<kafka::kafka>()) {}
-kafka_plugin::~kafka_plugin() {}
+using eosio::kafka::Block;
+using eosio::kafka::Transaction;
+using eosio::kafka::Action;
 
 void kafka_plugin::set_program_options(options_description&, options_description& cfg) {
     cfg.add_options()
-            ("kafka-enable", bpo::value<bool>(), "Kafka enable")
-            ("kafka-broker-list", bpo::value<string>()->default_value("127.0.0.1:9092"), "Kafka initial broker list, formatted as comma separated pairs of host or host:port, e.g., host1:port1,host2:port2")
-            ("kafka-block-topic", bpo::value<string>()->default_value("eos.blocks"), "Kafka topic for message `block`")
-            ("kafka-transaction-topic", bpo::value<string>()->default_value("eos.txs"), "Kafka topic for message `transaction`")
-            ("kafka-transaction-trace-topic", bpo::value<string>()->default_value("eos.txtraces"), "Kafka topic for message `transaction_trace`")
-            ("kafka-action-topic", bpo::value<string>()->default_value("eos.actions"), "Kafka topic for message `action`")
-            ("kafka-batch-num-messages", bpo::value<unsigned>()->default_value(1024), "Kafka minimum number of messages to wait for to accumulate in the local queue before sending off a message set")
-            ("kafka-queue-buffering-max-ms", bpo::value<unsigned>()->default_value(500), "Kafka how long to wait for kafka-batch-num-messages to fill up in the local queue")
-            ("kafka-compression-codec", bpo::value<compression_codec>()->value_name("none/gzip/snappy/lz4"), "Kafka compression codec to use for compressing message sets, default is snappy")
-            ("kafka-request-required-acks", bpo::value<int>()->default_value(1), "Kafka indicates how many acknowledgements the leader broker must receive from ISR brokers before responding to the request: 0=Broker does not send any response/ack to client, 1=Only the leader broker will need to ack the message, -1=broker will block until message is committed by all in sync replicas (ISRs) or broker's min.insync.replicas setting before sending response")
-            ("kafka-message-send-max-retries", bpo::value<unsigned>()->default_value(2), "Kafka how many times to retry sending a failing MessageSet")
-            ("kafka-start-block-num", bpo::value<unsigned>()->default_value(1), "Kafka starts syncing from which block number")
-            ("kafka-statistics-interval-ms", bpo::value<unsigned>()->default_value(0), "Kafka statistics emit interval, maximum is 86400000, 0 disables statistics")
-            ("kafka-fixed-partition", bpo::value<int>()->default_value(-1), "Kafka specify fixed partition for all topics, -1 disables specify")
+            ("kafka-broker-list", bpo::value<string>()->default_value("127.0.0.1:9092"), 
+                "Kafka initial broker list, formatted as comma separated pairs of host or host:port, e.g., host1:port1,host2:port2")
+            ("kafka-topic-prefix", bpo::value<string>()->default_value("eosio"), "Kafka topic for message `block`")
             ;
-    // TODO: security options
 }
 
 void kafka_plugin::plugin_initialize(const variables_map& options) {
-    if (not options.count("kafka-enable") || not options.at("kafka-enable").as<bool>()) {
-        wlog("kafka_plugin disabled, since no --kafka-enable=true specified");
-        return;
-    }
 
     ilog("Initialize kafka plugin");
-    configured_ = true;
 
-    string compressionCodec = "snappy";
-    if (options.count("kafka-compression-codec")) {
-        switch (options.at("kafka-compression-codec").as<compression_codec>()) {
-            case compression_codec::none:
-                compressionCodec = "none";
-                break;
-            case compression_codec::gzip:
-                compressionCodec = "gzip";
-                break;
-            case compression_codec::snappy:
-                compressionCodec = "snappy";
-                break;
-            case compression_codec::lz4:
-                compressionCodec = "lz4";
-                break;
-        }
-    }
+    topic_prefix = options.at("kafka-topic-prefix").as<string>();
 
-    kafka::Configuration config = {
-            {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
-            {"batch.num.messages", options.at("kafka-batch-num-messages").as<unsigned>()},
-            {"queue.buffering.max.ms", options.at("kafka-queue-buffering-max-ms").as<unsigned>()},
-            {"compression.codec", compressionCodec},
-            {"request.required.acks", options.at("kafka-request-required-acks").as<int>()},
-            {"message.send.max.retries", options.at("kafka-message-send-max-retries").as<unsigned>()},
-            {"socket.keepalive.enable", true}
+    kafka_config = {
+        {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
+        {"socket.keepalive.enable", true},
+        {"request.required.acks", 1},
     };
-    auto stats_interval = options.at("kafka-statistics-interval-ms").as<unsigned>();
-    if (stats_interval > 0) {
-        config.set("statistics.interval.ms", stats_interval);
-        config.set_stats_callback([](kafka::KafkaHandleBase& handle, const std::string& json) {
-            ilog("kafka stats: ${json}", ("json", json));
-        });
-    }
-    kafka_->set_config(config);
-    kafka_->set_topics(
-            options.at("kafka-block-topic").as<string>(),
-            options.at("kafka-transaction-topic").as<string>(),
-            options.at("kafka-transaction-trace-topic").as<string>(),
-            options.at("kafka-action-topic").as<string>()
-    );
 
-    if (options.at("kafka-fixed-partition").as<int>() >= 0) {
-        kafka_->set_partition(options.at("kafka-fixed-partition").as<int>());
-    }
-
-    unsigned start_block_num = options.at("kafka-start-block-num").as<unsigned>();
-
-    // add callback to chain_controller config
-    chain_plugin_ = app().find_plugin<chain_plugin>();
-    auto& chain = chain_plugin_->chain();
-
-    block_conn_ = chain.accepted_block.connect([=](const chain::block_state_ptr& b) {
-        if (not start_sync_) {
-            if (b->block_num >= start_block_num) start_sync_ = true;
-            else return;
+    auto& chain = app().get_plugin<chain_plugin>().chain();
+    on_accepted_block_connection = chain.accepted_block.connect([=](const block_state_ptr& block_state) {
+        try {
+            Block block(block_state, false);
+            produce(block);
+            for (int i = 0; i < block_state->block->transactions.size(); i++) {
+                Transaction transaction(block_state, i, false);
+                produce(transaction);
+            }
+        } catch (const std::exception& ex) {
+            elog ("std Exception in kafka_plugin when accept block : ${ex}", ("ex", ex.what()));
+        } catch (...) {
+            elog ("Unknown Exception in kafka_plugin when accept block");
         }
-        handle([=] { kafka_->push_block(b, false); }, "push block");
     });
-    irreversible_block_conn_ = chain.irreversible_block.connect([=](const chain::block_state_ptr& b) {
-        if (not start_sync_) {
-            if (b->block_num >= start_block_num) start_sync_ = true;
-            else return;
+    on_irreversible_block_connection = chain.irreversible_block.connect([=](const block_state_ptr& block_state) {
+        try {
+            Block block(block_state, true);
+            produce(block);
+            for (int i = 0; i < block_state->block->transactions.size(); i++) {
+                Transaction transaction(block_state, i, true);
+                produce(transaction);
+            }
+        } catch (const std::exception& ex) {
+            elog ("std Exception in kafka_plugin when irreversible block : ${ex}", ("ex", ex.what()));
+        } catch (...) {
+            elog ("Unknown Exception in kafka_plugin when irreversible block");
         }
-        handle([=] { kafka_->push_block(b, true); }, "push irreversible block");
     });
-    transaction_conn_ = chain.applied_transaction.connect([=](const chain::transaction_trace_ptr& t) {
-        if (not start_sync_) return;
-        handle([=] { kafka_->push_transaction_trace(t); }, "push transaction");
+    on_applied_transaction_connection = chain.applied_transaction.connect([=](const transaction_trace_ptr& trace) {
+        try {
+            queue<pair<action_trace, Action> > parent_actions;
+            for (int i = 0; i < trace->action_traces.size(); i++) {
+                Action action(trace, i);
+                produce(action);
+                if (!trace->action_traces[i].inline_traces.empty())
+                    parent_actions.push(std::tie(trace->action_traces[i], action));
+            }
+            while (!parent_actions.empty()) {
+                auto children = parent_actions.front();
+                parent_actions.pop();
+                for (int i = 0; i < children.first.inline_traces.size(); i ++) {
+                    Action action(children.second, children.first, i);
+                    produce(action);
+                    if (!children.first.inline_traces[i].inline_traces.empty()) {
+                        parent_actions.push(std::tie(children.first.inline_traces[i], action)); 
+                    }
+                }
+            }
+        } catch (const std::exception& ex) {
+            elog ("std Exception in kafka_plugin when applied transaction : ${ex}", ("ex", ex.what()));
+        } catch (...) {
+            elog ("Unknown Exception in kafka_plugin when applied transaction");
+        }
     });
 }
 
 void kafka_plugin::plugin_startup() {
-    if (not configured_) return;
     ilog("Starting kafka_plugin");
-    kafka_->start();
-    ilog("Started kafka_plugin");
+    kafka_producer = std::make_unique<cppkafka::Producer>(kafka_config);
+    auto conf = kafka_producer->get_configuration().get_all();
+    ilog ("Kafka config : ${conf}", ("conf", conf));
 }
 
 void kafka_plugin::plugin_shutdown() {
-    if (not configured_) return;
     ilog("Stopping kafka_plugin");
-
     try {
-        block_conn_.disconnect();
-        irreversible_block_conn_.disconnect();
-        transaction_conn_.disconnect();
-
-        kafka_->stop();
-    } catch (const std::exception& e) {
-        elog("Exception on kafka_plugin shutdown: ${e}", ("e", e.what()));
+        on_accepted_block_connection.disconnect();
+        on_irreversible_block_connection.disconnect();
+        on_applied_transaction_connection.disconnect();
+        kafka_producer->flush();
+        kafka_producer.reset();
+    } catch (const std::exception& ex) {
+        elog("std Exception in kafka_plugin when shutdown: ${ex}", ("ex", ex.what()));
     }
-
-    ilog("Stopped kafka_plugin");
 }
 
 }

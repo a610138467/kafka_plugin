@@ -5,8 +5,6 @@ if (RdKafka_FOUND)
 
     add_library(kafka_plugin
                 kafka_plugin.cpp 
-                kafka.cpp 
-                try_handle.cpp
                 ${CPPKAFKA_SRC}
                 )
 

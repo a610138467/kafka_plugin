@@ -108,7 +108,7 @@ private:
     void produce(Materials& materials) {
         auto payload = fc::json::to_string(materials, fc::json::legacy_generator);
         cppkafka::Buffer key (materials.id.data(), materials.id.size());
-        string topic = boost::core::demangle(typeid(Materials).name());
+        string topic = topic_prefix + boost::core::demangle(typeid(Materials).name());
         kafka_producer->produce(cppkafka::MessageBuilder(topic).partition(0).key(key).payload(payload));
     }
 

@@ -121,6 +121,13 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
     ilog("Initialize kafka plugin");
 
     topic_prefix = options.at("kafka-topic-prefix").as<string>();
+    if (!topic_prefix.empty()) {
+        if (topic_prefix.length() >= 2 && !(topic_prefix[-1] == ':' && topic_prefix[-2] == ':')) {
+            topic_prefix += "::";
+        } else if(topic_prefix.length() < 2){
+            topic_prefix += "::"; 
+        }
+    }
 
     kafka_config = {
         {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
@@ -164,7 +171,7 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                 Action action(trace, i);
                 produce(action);
                 if (!trace->action_traces[i].inline_traces.empty())
-                    parent_actions.push(std::tie(trace->action_traces[i], action));
+                    parent_actions.push(std::make_pair(trace->action_traces[i], action));
             }
             while (!parent_actions.empty()) {
                 auto children = parent_actions.front();
@@ -173,7 +180,7 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                     Action action(children.second, children.first, i);
                     produce(action);
                     if (!children.first.inline_traces[i].inline_traces.empty()) {
-                        parent_actions.push(std::tie(children.first.inline_traces[i], action)); 
+                        parent_actions.push(std::make_pair(children.first.inline_traces[i], action)); 
                     }
                 }
             }

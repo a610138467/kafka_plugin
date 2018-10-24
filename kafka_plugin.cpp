@@ -116,18 +116,17 @@ void kafka_plugin::set_program_options(options_description&, options_description
             ;
 }
 
+template <typename Class>
+std::string kafka_plugin::Topic<Class>::value;
+
 void kafka_plugin::plugin_initialize(const variables_map& options) {
 
     ilog("Initialize kafka plugin");
 
     topic_prefix = options.at("kafka-topic-prefix").as<string>();
-    if (!topic_prefix.empty()) {
-        if (topic_prefix.length() >= 2 && !(topic_prefix[-1] == ':' && topic_prefix[-2] == ':')) {
-            topic_prefix += "::";
-        } else if(topic_prefix.length() < 2){
-            topic_prefix += "::"; 
-        }
-    }
+    auto block_topic = Topic<Block>(topic_prefix);
+    auto trans_topic = Topic<Transaction>(topic_prefix);
+    auto ation_topic = Topic<Action>(topic_prefix);
 
     kafka_config = {
         {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},

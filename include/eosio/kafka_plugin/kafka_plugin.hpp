@@ -104,12 +104,26 @@ public:
 
 private:
 
+    template<typename Class>
+    struct Topic {
+        static std::string value;
+        Topic(const string& prefix) {
+            string class_name = boost::core::demangle(typeid(Class).name());
+            const char replace_from[] = "::";
+            const char replace_to[] = ".";
+            string::size_type pos = class_name.find(replace_from);
+            while (pos != string::npos) {
+                class_name = class_name.replace(pos, sizeof(replace_from) - 1, replace_to);
+            }
+            value = prefix + "_" + class_name;
+        }
+    };
+
     template<typename Materials> 
     void produce(Materials& materials) {
         auto payload = fc::json::to_string(materials, fc::json::legacy_generator);
         cppkafka::Buffer key (materials.id.data(), materials.id.size());
-        string topic = topic_prefix + boost::core::demangle(typeid(Materials).name());
-        kafka_producer->produce(cppkafka::MessageBuilder(topic).partition(0).key(key).payload(payload));
+        kafka_producer->produce(cppkafka::MessageBuilder(Topic<Materials>::value).partition(0).key(key).payload(payload));
     }
 
     boost::signals2::connection on_accepted_block_connection;

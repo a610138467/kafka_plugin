@@ -70,7 +70,7 @@ private:
         kafka_producer->produce(cppkafka::MessageBuilder(Topic<Materials>::value).partition(0).key(key).payload(payload));
         ilog ("push 1 message to kafka topic ${topic}", ("topic", topic));
         if (debug) {
-            dlog ("message : ${message}", ("message", payload));
+            dlog ("${topic} message : ${message}", ("topic", topic)("message", payload));
         }
     }
 

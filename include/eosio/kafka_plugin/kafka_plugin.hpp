@@ -27,70 +27,6 @@ using eosio::chain::transaction_receipt;
 using eosio::chain::transaction_trace_ptr;
 using eosio::chain::action_trace;
 
-
-namespace kafka {
-
-const char* const irreversible_stuff = "irreversible";
-const char* const reversible_stuff   = "reversible";
-
-struct Block {
-    bytes id;
-    bool irreversible;
-    int64_t create_timestamp;
-    
-    block_id_type block_id;
-    block_id_type block_previous;
-    uint32_t block_num;
-    account_name block_producer;
-    block_timestamp_type block_timestamp;
-
-    bytes block;
-    
-    Block (const block_state_ptr& block_state, bool irreversible);
-};
-
-struct Transaction {
-    bytes id;
-    bool irreversible;
-    int64_t create_timestamp;
-
-    block_id_type block_id;
-    int32_t block_num;
-    uint16_t block_sequence;
-    int32_t transaction_cpu_usage_us;
-    fc::unsigned_int transaction_net_usage_words;
-    transaction_id_type transaction_id;
-
-    time_point_sec transaction_expiration;
-    fc::unsigned_int transaction_delay_sec;
-
-    bytes transaction;
-
-    Transaction (const block_state_ptr& block_state, uint16_t sequence,  bool irreversible);
-};
-
-struct Action {
-    bytes id;
-    bytes parent;
-    int64_t create_timestamp;
-
-    transaction_id_type transaction_id;
-    int32_t action_sequence;
-    account_name account;
-    account_name name;
-    bytes data;
-    account_name receiver;
-    int64_t global_sequence;
-    int64_t recv_sequence;
-
-    Action (const transaction_trace_ptr& trace, int sequence);
-    Action (const Action& action, const action_trace& trace, int sequence);
-};
-
-} //kafka
-
-
-
 using namespace appbase;
 
 class kafka_plugin : public appbase::plugin<kafka_plugin> {
@@ -116,15 +52,24 @@ private:
                 class_name = class_name.replace(pos, sizeof(replace_from) - 1, replace_to);
                 pos = class_name.find(replace_from);
             }
-            value = prefix + "_" + class_name;
+            const char ignore_name[] = "kafka";
+            pos = class_name.find(ignore_name);
+            if (pos != string::npos) 
+                class_name.replace(pos, sizeof(ignore_name) - 1, "");
+            value = prefix + "." + class_name;
         }
     };
 
     template<typename Materials> 
     void produce(Materials& materials) {
         auto payload = fc::json::to_string(materials, fc::json::legacy_generator);
-        cppkafka::Buffer key (materials.id.data(), materials.id.size());
+        cppkafka::Buffer key (materials.kafka_id.data(), materials.kafka_id.length());
+        string topic = Topic<Materials>::value;
         kafka_producer->produce(cppkafka::MessageBuilder(Topic<Materials>::value).partition(0).key(key).payload(payload));
+        ilog ("push 1 message to kafka topic ${topic}", ("topic", topic));
+        if (debug) {
+            dlog ("message : ${message}", ("message", payload));
+        }
     }
 
     boost::signals2::connection on_accepted_block_connection;
@@ -134,13 +79,11 @@ private:
     cppkafka::Configuration kafka_config;
     std::unique_ptr<cppkafka::Producer> kafka_producer;
     string topic_prefix;
+
+    uint32_t start_block_num;
+    uint32_t stop_block_num;
+    uint32_t current_block_num;
+    bool debug;
 };
 
 }
-FC_REFLECT(eosio::kafka::Block, (id)(irreversible)(block_id)(block_previous)(block_num)
-                                (block_producer)(block_timestamp)(block))
-FC_REFLECT(eosio::kafka::Transaction, (id)(irreversible)(create_timestamp)(block_id)(block_num)(block_sequence)
-                                (transaction_cpu_usage_us)(transaction_net_usage_words)(transaction_id)
-                                (transaction_expiration)(transaction_delay_sec))
-FC_REFLECT(eosio::kafka::Action, (id)(parent)(create_timestamp)(transaction_id)(action_sequence)
-                                (account)(name)(data)(receiver)(global_sequence)(recv_sequence))

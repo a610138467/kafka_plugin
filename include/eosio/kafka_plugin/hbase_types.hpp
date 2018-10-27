@@ -227,7 +227,8 @@ FC_REFLECT(eosio::kafka::hbase::BlockState,
         (block_bytes))
 
 FC_REFLECT(eosio::kafka::hbase::TransactionTrace,
-        (produce_timestamp)(transaction_id_askey)(id)
+        (produce_timestamp)(transaction_id_askey)(producer_block_id)
+        (block_num)(block_time)(id)
         (receipt)(elapsed)(net_usage)(scheduled)
         (action_traces)(failed_dtrx_trace)(except)
         (except_ptr)(action_trace_num)(status)

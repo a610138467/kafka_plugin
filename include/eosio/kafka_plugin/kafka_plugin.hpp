@@ -52,10 +52,12 @@ private:
                 class_name = class_name.replace(pos, sizeof(replace_from) - 1, replace_to);
                 pos = class_name.find(replace_from);
             }
-            const char ignore_name[] = "kafka";
-            pos = class_name.find(ignore_name);
-            if (pos != string::npos) 
-                class_name.replace(pos, sizeof(ignore_name) - 1, "");
+            vector<string> ignore_names = {"eosio.", "kafka."};
+            for (auto name : ignore_names) {
+                pos = class_name.find(name);
+                if (pos != string::npos) 
+                    class_name.replace(pos, name.length(), "");
+            }
             value = prefix + "." + class_name;
         }
     };

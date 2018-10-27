@@ -23,7 +23,7 @@ void kafka_plugin::set_program_options(options_description&, options_description
                 "Kafka initial broker list, formatted as comma separated pairs of host or host:port, e.g., host1:port1,host2:port2")
             ("kafka-topic-prefix", bpo::value<string>()->default_value("eosio"), "Kafka topic for message `block`")
             ("kafka-start-block-num", bpo::value<uint32_t>()->default_value(0), "from which block begin")
-            ( "kafka-stop-block-num", bpo::value<uint32_t>()->default_value(-1), "to which block stop. -1 will not stop")
+            ( "kafka-stop-block-num", bpo::value<uint32_t>()->default_value(0), "to which block stop. will not stop if less than start-block-num")
             ("kafka-debug", bpo::value<bool>()->default_value(false), "print the kafka message, if true")
             ;
 }
@@ -98,9 +98,10 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
         } catch (...) {
             elog ("Unknown Exception in kafka_plugin when irreversible block");
         }
-        if (current_block_num >= stop_block_num) {
+        if (stop_block_num > start_block_num && current_block_num >= stop_block_num) {
             ilog ("kafka plugin stopped. [${from}-${to}]", ("from", start_block_num)("to", stop_block_num));
             plugin_shutdown();
+            app().quit();
         }
     });
     on_applied_transaction_connection = chain.applied_transaction.connect([=](const transaction_trace_ptr& trace) {
@@ -149,14 +150,19 @@ void kafka_plugin::plugin_startup() {
 
 void kafka_plugin::plugin_shutdown() {
     ilog("Stopping kafka_plugin");
-    try {
-        on_accepted_block_connection.disconnect();
-        on_irreversible_block_connection.disconnect();
-        on_applied_transaction_connection.disconnect();
-        kafka_producer->flush();
-        kafka_producer.reset();
-    } catch (const std::exception& ex) {
-        elog("std Exception in kafka_plugin when shutdown: ${ex}", ("ex", ex.what()));
+    on_accepted_block_connection.disconnect();
+    on_irreversible_block_connection.disconnect();
+    on_applied_transaction_connection.disconnect();
+    for (int i = 0; i < 5; i ++) {
+        //flush有失败的情况
+        try {
+            kafka_producer->flush();
+            ilog ("kafka flush finish");
+            kafka_producer.reset();
+            break;
+        } catch (const std::exception& ex) {
+            elog("std Exception in kafka_plugin when shutdown: ${ex}, try again(${index}/5", ("ex", ex.what())("index", i));
+        }
     }
 }
 

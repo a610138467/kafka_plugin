@@ -100,6 +100,9 @@ namespace eosio{ namespace kafka{ namespace hbase{
         string transaction_id_askey;
         //对照transaction_trace
         transaction_id_type id;
+        block_id_type producer_block_id;
+        uint32_t block_num;
+        block_timestamp_type block_time;
         string receipt;
         fc::microseconds elapsed;
         uint64_t net_usage;

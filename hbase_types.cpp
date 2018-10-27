@@ -57,6 +57,13 @@ TransactionTrace::TransactionTrace (const transaction_trace_ptr& transaction_tra
     produce_timestamp = now.time_since_epoch().count();
     transaction_id_askey = string(transaction_trace->id);
     id = transaction_trace->id;
+    fc::variant transaction_trace_variant(transaction_trace);
+    if (transaction_trace_variant.is_object()) {
+        auto transaction_trace_variant_object = transaction_trace_variant.get_object();
+        producer_block_id = transaction_trace_variant_object["producer_block_id"].as<block_id_type>();
+        block_num = transaction_trace_variant_object["block_num"].as<uint32_t>();
+        block_time = transaction_trace_variant_object["block_time"].as<block_timestamp_type>();
+    }
     receipt = fc::json::to_string(transaction_trace->receipt, fc::json::legacy_generator);
     elapsed = transaction_trace->elapsed;
     net_usage = transaction_trace->net_usage;

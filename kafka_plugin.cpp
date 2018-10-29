@@ -94,6 +94,7 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
         } catch (...) {
             elog ("Unknown Exception in kafka_plugin when irreversible block");
         }
+        ilog ("kafka_plug, current irreversible block_id : ${current_block_num}\n", ("current_block_num", current_block_num));
         if (stop_block_num > start_block_num && current_block_num >= stop_block_num) {
             ilog ("kafka plugin stopped. [${from}-${to}]", ("from", start_block_num)("to", stop_block_num));
             plugin_shutdown();

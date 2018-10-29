@@ -34,6 +34,7 @@ namespace eosio{ namespace kafka{ namespace hbase{
     using chain::signature_type;
     using chain::action_name;
     using chain::transaction_trace_ptr;
+    using chain::packed_transaction;
     /*
      * 这个结构体记录了on_accepted_block和on_irreversible_block两个回调中block_state
      * 的全部信息
@@ -125,21 +126,19 @@ namespace eosio{ namespace kafka{ namespace hbase{
     };
     
     /*
-     * 这个结构体中记录了区块的包含的交易transaction_metadata的交易
+     * 这个结构体中记录了区块的包含的交易transaction_receipt的交易
      */
-    struct TransactionMetadata {
+    struct TransactionReceipt {
         string kafka_id;
         int64_t produce_timestamp;
         string transaction_id_askey;
         block_id_type block_id;
         uint32_t block_num;
-        //对照transaction_metadata
-        transaction_id_type id;
-        transaction_id_type signed_id;
-        string trx;
-        string packed_trx;
-        string signing_keys;
-        bool accepted;
+        //对照transaction_receipt中的内容
+        fc::enum_type<uint8_t,chain::transaction_receipt::status_enum> status;
+        uint32_t cpu_usage_us;
+        fc::unsigned_int net_usage_words;
+        digest_type digest;
         //signed_transaction的内容
         time_point_sec expiration;
         uint16_t ref_block_num;
@@ -150,6 +149,7 @@ namespace eosio{ namespace kafka{ namespace hbase{
         string context_free_actions;
         string actions;
         string transaction_extensions;
+        transaction_id_type id;
         account_name first_authorizor;
         string signatures;
         string context_free_data;
@@ -164,7 +164,7 @@ namespace eosio{ namespace kafka{ namespace hbase{
         //该交易目前是否不可逆
         bool irreversible;
 
-        TransactionMetadata (const block_state_ptr& block_state, uint32_t index_in_block, bool irreversible);
+        TransactionReceipt (const block_state_ptr& block_state, uint32_t index_in_block, bool irreversible);
     };
 
     /*
@@ -235,12 +235,12 @@ FC_REFLECT(eosio::kafka::hbase::TransactionTrace,
         (cpu_usage_us)(net_usage_words)
         (transaction_json)(transaction_bytes))
 
-FC_REFLECT(eosio::kafka::hbase::TransactionMetadata,
-        (produce_timestamp)(transaction_id_askey)(id)(signed_id)
-        (trx)(packed_trx)(signing_keys)(accepted)(expiration)
+FC_REFLECT(eosio::kafka::hbase::TransactionReceipt,
+        (produce_timestamp)(transaction_id_askey)(block_id)(block_num)
+        (status)(cpu_usage_us)(net_usage_words)(digest)(expiration)
         (ref_block_num)(ref_block_prefix)(max_net_usage_words)
         (max_cpu_usage_ms)(delay_sec)(context_free_actions)
-        (actions)(transaction_extensions)(first_authorizor)
+        (actions)(transaction_extensions)(id)(first_authorizor)
         (signatures)(context_free_data)(unprunable_size)
         (prunable_size)(packed_digest)(compression)
         (packed_context_free_data)(packed_transaction_packed_trx)

@@ -10,7 +10,7 @@ static appbase::abstract_plugin& _kafka_relay_plugin = app().register_plugin<kaf
 
 using eosio::kafka::hbase::BlockState;
 using eosio::kafka::hbase::TransactionTrace;
-using eosio::kafka::hbase::TransactionMetadata;
+using eosio::kafka::hbase::TransactionReceipt;
 using eosio::kafka::hbase::ActionTrace;
 using eosio::kafka::es::BlockInfo;
 using eosio::kafka::es::TransactionInfo;
@@ -38,7 +38,7 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
     topic_prefix = options.at("kafka-topic-prefix").as<string>();
     auto block_topic = Topic<BlockState>(topic_prefix);
     auto transaction_trace = Topic<TransactionTrace>(topic_prefix);
-    auto transaction_metadata = Topic<TransactionMetadata>(topic_prefix);
+    auto transaction_receipt = Topic<TransactionReceipt>(topic_prefix);
     auto atrace = Topic<ActionTrace>(topic_prefix);
     auto block_info = Topic<BlockInfo>(topic_prefix);
     auto transaction_info = Topic<TransactionInfo>(topic_prefix);
@@ -64,8 +64,8 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
             BlockInfo block_info(block_state, false);
             produce(block_info);
             for (int i = 0; i < block_state->block->transactions.size(); i++) {
-                TransactionMetadata transaction_metadata(block_state, i, false);
-                produce(transaction_metadata);
+                TransactionReceipt transaction_receipt(block_state, i, false);
+                produce(transaction_receipt);
                 TransactionInfo transaction_info(block_state, i, false);
                 produce(transaction_info);
             }
@@ -88,8 +88,8 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                 produce(contract_stream);
             }
             for (int i = 0; i < block_state->block->transactions.size(); i++) {
-                TransactionMetadata transaction_metadata(block_state, i, true);
-                produce(transaction_metadata);
+                TransactionReceipt transaction_receipt(block_state, i, true);
+                produce(transaction_receipt);
                 TransactionInfo transaction_info(block_state, i, true);
                 produce(transaction_info);
             }

@@ -96,43 +96,51 @@ TransactionTrace::TransactionTrace (const transaction_trace_ptr& transaction_tra
     transaction_bytes=fc::raw::pack(transaction_trace);
 }
 
-TransactionMetadata::TransactionMetadata (const block_state_ptr& block_state, uint32_t index_in_block, bool irreversible) {
-    auto& transaction_metadata = block_state->trxs[index_in_block];
-    kafka_id = string(block_state->id) + (irreversible ? 'T' : 'F') + string(transaction_metadata->id);
+TransactionReceipt::TransactionReceipt (const block_state_ptr& block_state, uint32_t index_in_block, bool irreversible) {
+    auto& transaction_receipt = block_state->block->transactions[index_in_block];
+    transaction_id_type transaction_id;
+    if (transaction_receipt.trx.contains<packed_transaction>()) {
+        transaction_id = transaction_receipt.trx.get<packed_transaction>().id();
+    } else {
+        transaction_id = transaction_receipt.trx.get<transaction_id_type>();
+    }
+    kafka_id = string(block_state->id) + (irreversible ? 'T' : 'F') + string(transaction_id);
     time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
     produce_timestamp = now.time_since_epoch().count();
     transaction_id_askey = kafka_id;
     block_id = block_state->id;
     block_num = block_state->block_num;
-    id = transaction_metadata->id;
-    signed_id = transaction_metadata->signed_id;
-    trx = fc::json::to_string(transaction_metadata->trx, fc::json::legacy_generator);
-    packed_trx = fc::json::to_string(transaction_metadata->packed_trx, fc::json::legacy_generator);
-    signing_keys = fc::json::to_string(transaction_metadata->signing_keys, fc::json::legacy_generator);
-    accepted = transaction_metadata->accepted;
-    expiration = transaction_metadata->trx.expiration;
-    ref_block_num = transaction_metadata->trx.ref_block_num;
-    ref_block_prefix = transaction_metadata->trx.ref_block_prefix;
-    max_net_usage_words = transaction_metadata->trx.max_net_usage_words;
-    max_cpu_usage_ms = transaction_metadata->trx.max_cpu_usage_ms;
-    delay_sec = transaction_metadata->trx.delay_sec;
-    context_free_actions = fc::json::to_string(transaction_metadata->trx.context_free_actions,
+    status = transaction_receipt.status;
+    cpu_usage_us = transaction_receipt.cpu_usage_us;
+    net_usage_words = transaction_receipt.net_usage_words;
+    digest = transaction_receipt.digest();
+    if (transaction_receipt.trx.contains<packed_transaction>()) {
+        auto packed_trx = transaction_receipt.trx.get<packed_transaction>();
+        auto signed_trx = packed_trx.get_signed_transaction();
+        expiration = signed_trx.expiration;
+        ref_block_num = signed_trx.ref_block_num;
+        ref_block_prefix = signed_trx.ref_block_prefix;
+        max_net_usage_words = signed_trx.max_net_usage_words;
+        max_cpu_usage_ms = signed_trx.max_cpu_usage_ms;
+        delay_sec = signed_trx.delay_sec;
+        context_free_actions = fc::json::to_string(signed_trx.context_free_actions,
                                             fc::json::legacy_generator);
-    actions = fc::json::to_string(transaction_metadata->trx.actions, fc::json::legacy_generator);
-    transaction_extensions = fc::json::to_string(transaction_metadata->trx.transaction_extensions,
+        actions = fc::json::to_string(signed_trx.actions, fc::json::legacy_generator);
+        transaction_extensions = fc::json::to_string(signed_trx.transaction_extensions,
                                             fc::json::legacy_generator);
-    first_authorizor = transaction_metadata->trx.first_authorizor();
-    signatures = fc::json::to_string(transaction_metadata->trx.signatures, 
+        first_authorizor = signed_trx.first_authorizor();
+        signatures = fc::json::to_string(signed_trx.signatures, 
                                             fc::json::legacy_generator);
-    context_free_data = fc::json::to_string(transaction_metadata->trx.context_free_data,
+        context_free_data = fc::json::to_string(signed_trx.context_free_data,
                                             fc::json::legacy_generator);
-    unprunable_size = transaction_metadata->packed_trx.get_unprunable_size();
-    prunable_size = transaction_metadata->packed_trx.get_prunable_size();
-    packed_digest = transaction_metadata->packed_trx.packed_digest();
-    compression = transaction_metadata->packed_trx.compression;
-    packed_context_free_data = transaction_metadata->packed_trx.packed_context_free_data;
-    packed_transaction_packed_trx = transaction_metadata->packed_trx.packed_trx;
-    packed_transaction_expiration = transaction_metadata->packed_trx.expiration();
+        unprunable_size = packed_trx.get_unprunable_size();
+        prunable_size = packed_trx.get_prunable_size();
+        packed_digest = packed_trx.packed_digest();
+        compression = packed_trx.compression;
+        packed_context_free_data = packed_trx.packed_context_free_data;
+        packed_transaction_packed_trx = packed_trx.packed_trx;
+        packed_transaction_expiration = packed_trx.expiration();
+    }
     this->irreversible = irreversible;
 }
 

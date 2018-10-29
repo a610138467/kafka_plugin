@@ -201,6 +201,9 @@ namespace eosio{ namespace kafka{ namespace hbase{
         action_name  name;
         string authorization;
         string data;
+        block_id_type producer_block_id;
+        uint32_t block_num;
+        block_timestamp_type block_time;
         //整体信息
         string action_json;
         bytes action_bytes;
@@ -252,4 +255,5 @@ FC_REFLECT(eosio::kafka::hbase::ActionTrace,
         (inline_traces)(inline_trace_num)(receiver)(act_digest)
         (global_sequence)(recv_sequence)(auth_sequence)
         (code_sequence)(abi_sequence)(digest)(account)(name)
-        (authorization)(data))
+        (authorization)(data)(producer_block_id)(block_num)
+        (block_time)(action_json)(action_bytes))

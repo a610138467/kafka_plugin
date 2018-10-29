@@ -107,6 +107,9 @@ namespace eosio{ namespace kafka{ namespace es{
         uint64_t cpu_usage;
         uint64_t total_cpu_usage;
         transaction_id_type trx_id_askey;
+        block_id_type producer_block_id_askey;
+        uint32_t block_num_askey;
+        block_timestamp_type block_time;
         uint32_t inline_trace_num;
         account_name receiver_askey;
         digest_type act_digest;
@@ -116,7 +119,7 @@ namespace eosio{ namespace kafka{ namespace es{
         fc::unsigned_int abi_sequence;
         account_name account_askey;
         action_name  name_askey;
-        bytes data;
+        string data;
         string inline_actions;
         
         string hbase_action_trace_key;
@@ -170,7 +173,8 @@ FC_REFLECT (eosio::kafka::es::ActionInfo,
             (cpu_usage)(total_cpu_usage)(trx_id_askey)(inline_trace_num)
             (receiver_askey)(act_digest)(global_sequence)
             (recv_sequence)(code_sequence)(abi_sequence)(account_askey)
-            (name_askey)(data)(inline_actions)(hbase_action_trace_key))
+            (producer_block_id_askey)(block_num_askey)(block_time)(name_askey)(data)
+            (inline_actions)(hbase_action_trace_key))
 
 FC_REFLECT (eosio::kafka::es::TransferLog,
             (produce_timestamp)(primary_key)(producer_block_id)(block_num)(transaction_id)

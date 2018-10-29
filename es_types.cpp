@@ -26,9 +26,13 @@ BlockInfo::BlockInfo (const block_state_ptr& block_state, bool irreversible) {
     action_mroot = block_state->header.action_mroot;
     schedule_version = block_state->header.schedule_version;
     producer_signature = block_state->header.producer_signature;
-    vector<string> trxid_vector(trxs_num);
-    for (auto trx : block_state->trxs) {
-        trxid_vector.push_back(trx->id);
+    vector<string> trxid_vector;
+    for (auto trx : block_state->block->transactions) {
+        if (trx.trx.contains<packed_transaction>()) {
+            trxid_vector.push_back(trx.trx.get<packed_transaction>().id());
+        } else {
+            trxid_vector.push_back(trx.trx.get<transaction_id_type>());
+        }
     }
     trxs = fc::json::to_string(trxid_vector, fc::json::legacy_generator);
     this->irreversible = irreversible;
@@ -114,8 +118,22 @@ ActionInfo::ActionInfo (const transaction_trace_ptr& trace, uint32_t index_in_tr
     abi_sequence = action_trace.receipt.abi_sequence;
     account_askey = action_trace.act.account;
     name_askey = action_trace.act.name;
-    data = action_trace.act.data;
-    vector<uint64_t> action_global_id_vector(action_trace.inline_traces.size());
+    fc::variant_object action_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                                    action_trace, fc::seconds(1)).get_object();
+    if (action_variant.find("act") != action_variant.end()) {
+        auto act_object = action_variant["act"].get_object();
+        if (act_object.find("data") != act_object.end()) {
+            data = fc::json::to_string(act_object["data"], fc::json::legacy_generator);
+        }
+    }
+    if (action_variant.find("producer_block_id") != action_variant.end())
+        producer_block_id_askey = action_variant["producer_block_id"].as<block_id_type>();
+    if (action_variant.find("block_num") != action_variant.end())
+        block_num_askey = action_variant["block_num"].as<uint32_t>();
+    if (action_variant.find("block_time") != action_variant.end())
+        block_time = action_variant["block_time"].as<block_timestamp_type>();
+
+    vector<uint64_t> action_global_id_vector;
     for (auto inline_trace : action_trace.inline_traces) {
         action_global_id_vector.push_back(inline_trace.receipt.global_sequence);
     }
@@ -149,7 +167,21 @@ ActionInfo::ActionInfo (const action_trace& trace, uint32_t index_in_trace) {
     abi_sequence = action_trace.receipt.abi_sequence;
     account_askey = action_trace.act.account;
     name_askey = action_trace.act.name;
-    data = action_trace.act.data;
+    fc::variant_object action_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                                    action_trace, fc::seconds(1)).get_object();
+    if (action_variant.find("act") != action_variant.end()) {
+        auto act_object = action_variant["act"].get_object();
+        if (act_object.find("data") != act_object.end()) {
+            data = fc::json::to_string(act_object["data"], fc::json::legacy_generator);
+        }
+    }
+    if (action_variant.find("producer_block_id") != action_variant.end())
+        producer_block_id_askey = action_variant["producer_block_id"].as<block_id_type>();
+    if (action_variant.find("block_num") != action_variant.end())
+        block_num_askey = action_variant["block_num"].as<uint32_t>();
+    if (action_variant.find("block_time") != action_variant.end())
+        block_time = action_variant["block_time"].as<block_timestamp_type>();
+
     vector<uint64_t> action_global_id_vector(action_trace.inline_traces.size());
     for (auto inline_trace : action_trace.inline_traces) {
         action_global_id_vector.push_back(inline_trace.receipt.global_sequence);

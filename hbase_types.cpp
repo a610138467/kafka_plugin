@@ -64,9 +64,12 @@ TransactionTrace::TransactionTrace (const transaction_trace_ptr& transaction_tra
     fc::variant transaction_trace_variant(transaction_trace);
     if (transaction_trace_variant.is_object()) {
         auto transaction_trace_variant_object = transaction_trace_variant.get_object();
-        producer_block_id = transaction_trace_variant_object["producer_block_id"].as<block_id_type>();
-        block_num = transaction_trace_variant_object["block_num"].as<uint32_t>();
-        block_time = transaction_trace_variant_object["block_time"].as<block_timestamp_type>();
+        if (transaction_trace_variant_object.find("producer_block_id") != transaction_trace_variant_object.end())
+            producer_block_id = transaction_trace_variant_object["producer_block_id"].as<block_id_type>();
+        if (transaction_trace_variant_object.find("block_num") != transaction_trace_variant_object.end())
+            block_num = transaction_trace_variant_object["block_num"].as<uint32_t>();
+        if (transaction_trace_variant_object.find("block_time") != transaction_trace_variant_object.end())
+            block_time = transaction_trace_variant_object["block_time"].as<block_timestamp_type>();
     }
     receipt = fc::json::to_string(transaction_trace->receipt, fc::json::legacy_generator);
     elapsed = transaction_trace->elapsed;
@@ -181,6 +184,17 @@ ActionTrace::ActionTrace (const transaction_trace_ptr& trace, uint32_t index_in_
                                     fc::json::legacy_generator);
     fc::variant_object action_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
                                     action_trace.act, fc::seconds(1)).get_object();
+    if (action_variant.find("act") != action_variant.end()) {
+        auto act_object = action_variant["act"].get_object();
+        if (act_object.find("data") != act_object.end())
+            data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
+    }
+    if (action_variant.find("producer_block_id") != action_variant.end())
+        producer_block_id = action_variant["producer_block_id"].as<block_id_type>();
+    if (action_variant.find("block_num") != action_variant.end())
+        block_num = action_variant["block_num"].as<uint32_t>();
+    if (action_variant.find("block_time") != action_variant.end())
+        block_time = action_variant["block_time"].as<block_timestamp_type>();
     if (action_variant.find("data") != action_variant.end())
         data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
     action_json = fc::json::to_string(action_trace, fc::json::legacy_generator);
@@ -223,9 +237,19 @@ ActionTrace::ActionTrace (const ActionTrace& parent, const action_trace& trace, 
     authorization = fc::json::to_string(action_trace.act.authorization,
                                     fc::json::legacy_generator);
     fc::variant_object action_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
-                                    action_trace.act, fc::seconds(1)).get_object();
-    if (action_variant.find("data") != action_variant.end())
-        data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
+                                    action_trace, fc::seconds(1)).get_object();
+    if (action_variant.find("act") != action_variant.end()) {
+        auto act_object = action_variant["act"].get_object();
+        if (act_object.find("data") != act_object.end())
+            data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
+    }
+    if (action_variant.find("producer_block_id") != action_variant.end())
+        producer_block_id = action_variant["producer_block_id"].as<block_id_type>();
+    if (action_variant.find("block_num") != action_variant.end())
+        block_num = action_variant["block_num"].as<uint32_t>();
+    if (action_variant.find("block_time") != action_variant.end())
+        block_time = action_variant["block_time"].as<block_timestamp_type>();
+
     action_json = fc::json::to_string(action_trace, fc::json::legacy_generator);
     action_bytes= fc::raw::pack(action_trace);
 }

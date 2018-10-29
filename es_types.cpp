@@ -55,22 +55,31 @@ TransactionInfo::TransactionInfo (const transaction_trace_ptr& trace) {
 }
 
 TransactionInfo::TransactionInfo (const block_state_ptr& block_state, uint32_t index_in_block, bool irreversible) {
-    auto& transaction_metadata = block_state->trxs[index_in_block];
-    kafka_id = string(block_state->id) + (irreversible ? 'T' : 'F') + string(transaction_metadata->id);
+    auto& transaction_receipt = block_state->block->transactions[index_in_block];
+    transaction_id_type transaction_id;
+    if (transaction_receipt.trx.contains<packed_transaction>()) {
+        transaction_id = transaction_receipt.trx.get<packed_transaction>().id();
+    } else {
+        transaction_id = transaction_receipt.trx.get<transaction_id_type>();
+    }
+    kafka_id = string(block_state->id) + (irreversible ? 'T' : 'F') + string(transaction_id);
     time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
     produce_timestamp = now.time_since_epoch().count();
-    primary_key = transaction_metadata->id;
-    transaction_id_askey = transaction_metadata->id;
-    signed_id_askey = transaction_metadata->signed_id;
+    primary_key = transaction_id;
+    transaction_id_askey = transaction_id;
     block_id_askey = block_state->id;
     block_num_askey = block_state->block_num;
-    expiration = transaction_metadata->trx.expiration;
-    ref_block_num = transaction_metadata->trx.ref_block_num;
-    ref_block_prefix = transaction_metadata->trx.ref_block_prefix;
-    max_net_usage_words = transaction_metadata->trx.max_net_usage_words;
-    max_cpu_usage_ms = transaction_metadata->trx.max_cpu_usage_ms;
-    delay_sec = transaction_metadata->trx.delay_sec;
-    first_authorizor = transaction_metadata->trx.first_authorizor();
+    if (transaction_receipt.trx.contains<packed_transaction>()) {
+        auto packed_trx = transaction_receipt.trx.get<packed_transaction>();
+        auto signed_trx = packed_trx.get_signed_transaction();
+        expiration = signed_trx.expiration;
+        ref_block_num = signed_trx.ref_block_num;
+        ref_block_prefix = signed_trx.ref_block_prefix;
+        max_net_usage_words = signed_trx.max_net_usage_words;
+        max_cpu_usage_ms = signed_trx.max_cpu_usage_ms;
+        delay_sec = signed_trx.delay_sec;
+        first_authorizor = signed_trx.first_authorizor();
+    }
     if (irreversible) {
         this->irreversible = irreversible;
     }

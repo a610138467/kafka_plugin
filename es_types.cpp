@@ -46,7 +46,7 @@ TransactionInfo::TransactionInfo (const transaction_trace_ptr& trace) {
         cpu_usage_us = trace->receipt->cpu_usage_us;
     }
     action_trace_num = trace->action_traces.size();
-    vector<uint64_t> action_global_id_vector(trace->action_traces.size());
+    vector<uint64_t> action_global_id_vector;
     for (auto atrace : trace->action_traces) {
         action_global_id_vector.push_back(atrace.receipt.global_sequence);
     }

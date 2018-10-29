@@ -39,7 +39,7 @@ BlockState::BlockState (const block_state_ptr& block_state, bool irreversible) {
     block = fc::json::to_string(block_state->block, fc::json::legacy_generator);
     validated = block_state->validated;
     in_current_chain = block_state->in_current_chain;
-    trxs_num = block_state->trxs.size();
+    trxs_num = block_state->block->transactions.size();
     timestamp = block_state->header.timestamp;
     producer = block_state->header.producer;
     confirmed = block_state->header.confirmed;

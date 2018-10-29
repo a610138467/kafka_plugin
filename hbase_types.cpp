@@ -171,7 +171,10 @@ ActionTrace::ActionTrace (const transaction_trace_ptr& trace, uint32_t index_in_
     name = action_trace.act.name;
     authorization = fc::json::to_string(action_trace.act.authorization,
                                     fc::json::legacy_generator);
-    data = action_trace.act.data;
+    fc::variant_object action_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                                    action_trace.act, fc::seconds(1)).get_object();
+    if (action_variant.find("data") != action_variant.end())
+        data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
     action_json = fc::json::to_string(action_trace, fc::json::legacy_generator);
     action_bytes= fc::raw::pack(action_trace);
 }
@@ -211,7 +214,10 @@ ActionTrace::ActionTrace (const ActionTrace& parent, const action_trace& trace, 
     name = action_trace.act.name;
     authorization = fc::json::to_string(action_trace.act.authorization,
                                     fc::json::legacy_generator);
-    data = action_trace.act.data;
+    fc::variant_object action_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                                    action_trace.act, fc::seconds(1)).get_object();
+    if (action_variant.find("data") != action_variant.end())
+        data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
     action_json = fc::json::to_string(action_trace, fc::json::legacy_generator);
     action_bytes= fc::raw::pack(action_trace);
 }

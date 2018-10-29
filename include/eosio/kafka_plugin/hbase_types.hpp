@@ -200,7 +200,7 @@ namespace eosio{ namespace kafka{ namespace hbase{
         account_name account;
         action_name  name;
         string authorization;
-        bytes data;
+        string data;
         //整体信息
         string action_json;
         bytes action_bytes;

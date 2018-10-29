@@ -126,25 +126,26 @@ namespace eosio{ namespace kafka{ namespace es{
      };
 
      /*
-      * 记录合约的流水信息
+      * 记录转账信息
       */
-     struct ContractStream {
+     struct TransferLog {
         string kafka_id;
         uint64_t produce_timestamp;
         uint64_t primary_key;
-        block_id_type block_id;
+        block_id_type producer_block_id;
         uint32_t block_num;
         transaction_id_type transaction_id;
         uint64_t global_sequence;
-        block_timestamp_type timestamp;
-        account_name from;
-        account_name to;
-        uint64_t amount;
+        block_timestamp_type block_time;
+        account_name from_askey;
+        account_name to_askey;
+        double amount;
         string memo;
 
         string hbase_action_trace_key;
+        
+        static fc::optional<TransferLog> build_transfer_log (const action_trace& atrace);
 
-        static vector<ContractStream> get_contract_stream(const block_state_ptr& block_state);
      };
 }}} //eosio::kafka::es
 
@@ -171,6 +172,7 @@ FC_REFLECT (eosio::kafka::es::ActionInfo,
             (recv_sequence)(code_sequence)(abi_sequence)(account_askey)
             (name_askey)(data)(inline_actions)(hbase_action_trace_key))
 
-FC_REFLECT (eosio::kafka::es::ContractStream,
-            (produce_timestamp)(primary_key)(block_id)(block_num)(transaction_id)
-            (global_sequence)(timestamp)(from)(to)(amount)(memo))
+FC_REFLECT (eosio::kafka::es::TransferLog,
+            (produce_timestamp)(primary_key)(producer_block_id)(block_num)(transaction_id)
+            (global_sequence)(block_time)(from_askey)(to_askey)(amount)(memo)
+            (hbase_action_trace_key))

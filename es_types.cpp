@@ -1,10 +1,13 @@
 #include <vector>
 #include <fc/io/json.hpp>
 #include <eosio/kafka_plugin/es_types.hpp>
+#include <appbase/application.hpp>
+#include <eosio/chain_plugin/chain_plugin.hpp>
 
 namespace eosio{ namespace kafka{ namespace es{
 
 using std::vector;
+using namespace appbase;
 
 BlockInfo::BlockInfo (const block_state_ptr& block_state, bool irreversible) {
     kafka_id = string(block_state->id) + (irreversible ? "T" : "F");
@@ -155,37 +158,51 @@ ActionInfo::ActionInfo (const action_trace& trace, uint32_t index_in_trace) {
     hbase_action_trace_key = kafka_id;
 }
 
-vector<ContractStream> ContractStream::get_contract_stream(const block_state_ptr& block_state) {
-    vector<ContractStream> res;
-    auto block_id = block_state->id;
-    auto block_num= block_state->block_num;
-    auto trxs = block_state->block->transactions;
-    auto timestamp = block_state->block->timestamp;
-    for (auto trx : trxs) {
-        if (trx.trx.contains<packed_transaction>()) {
-            auto transaction = trx.trx.get<packed_transaction>().get_transaction();
-            auto transaction_id = transaction.id();
-            uint32_t action_index = 0;
-            for (auto action : transaction.actions) {
-                string account = string(action.account);
-                string name = string(action.name);
-                if (account == "eosio.token" && name == "transfer") {
-                    ContractStream cs;
-                    char action_index_str[8];
-                    sprintf(action_index_str, "%08x", action_index);
-                    cs.kafka_id = string(block_id) + string(transaction_id) + action_index_str;
-                    time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
-                    cs.produce_timestamp = now.time_since_epoch().count();
-                    cs.block_id = block_id;
-                    cs.block_num= block_num;
-                    cs.transaction_id = transaction_id;
-                    cs.timestamp = timestamp;
-                    res.push_back(cs);
-                }
-                action_index ++;
-            }
-        }
+fc::optional<TransferLog> TransferLog::build_transfer_log (const action_trace& atrace) {
+    fc::optional<TransferLog> res;
+
+    string account = string(atrace.act.account);
+    string name = string(atrace.act.name);
+    if (!(account == "eosio.token" && name == "transfer")) return res;
+    auto atrace_object = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                            atrace, fc::seconds(1)).get_object();
+    if (atrace_object.find("act") == atrace_object.end()) return res;
+    auto act_object = atrace_object["act"].get_object();
+    if (act_object.find("data") == act_object.end()) return res;
+    auto data_object = act_object["data"].get_object();
+    if (! (data_object.find("from") != data_object.end()
+        && data_object.find( "to" ) != data_object.end()
+        && data_object.find("quantity") != data_object.end())) return res;
+    
+    TransferLog transfer_log;
+    transfer_log.from_askey = data_object["from"].as<string>();
+    transfer_log.to_askey = data_object["to"].as<string>();
+    transfer_log.amount = data_object["quantity"].as<asset>().to_real();
+    if (data_object.find("memo") != data_object.end())
+        transfer_log.memo = data_object["memo"].as<string>();
+
+    if (atrace_object.find("producer_block_id") != atrace_object.end())
+        transfer_log.producer_block_id = atrace_object["producer_block_id"].as<block_id_type>();
+    if (atrace_object.find("block_num") != atrace_object.end())
+        transfer_log.block_num= atrace_object["block_num"].as<uint32_t>();
+    if (atrace_object.find("trx_id") != atrace_object.end())
+        transfer_log.transaction_id = atrace_object["trx_id"].as<transaction_id_type>();
+    if (atrace_object.find("block_time") != atrace_object.end())
+        transfer_log.block_time = atrace_object["block_time"].as<block_timestamp_type>();
+    transfer_log.global_sequence = atrace.receipt.global_sequence;
+
+    transfer_log.kafka_id = string(transfer_log.producer_block_id) + string(transfer_log.transaction_id);
+    const char* global_sequence_ptr = (const char*)(transfer_log.global_sequence);
+    for (int i = 0; i < sizeof(transfer_log.global_sequence); i ++) {
+        char tmp[8];
+        sprintf (tmp, "%02x", global_sequence_ptr[i]);
+        transfer_log.kafka_id += tmp;
     }
+    time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+    transfer_log.produce_timestamp = now.time_since_epoch().count();
+    transfer_log.primary_key = transfer_log.global_sequence;
+    transfer_log.hbase_action_trace_key = transfer_log.kafka_id;
+    res = transfer_log;
     return res;
 }
 

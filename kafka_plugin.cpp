@@ -15,7 +15,7 @@ using eosio::kafka::hbase::ActionTrace;
 using eosio::kafka::es::BlockInfo;
 using eosio::kafka::es::TransactionInfo;
 using eosio::kafka::es::ActionInfo;
-using eosio::kafka::es::ContractStream;
+using eosio::kafka::es::TransferLog;
 
 void kafka_plugin::set_program_options(options_description&, options_description& cfg) {
     cfg.add_options()
@@ -43,7 +43,7 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
     auto block_info = Topic<BlockInfo>(topic_prefix);
     auto transaction_info = Topic<TransactionInfo>(topic_prefix);
     auto action_info = Topic<ActionInfo>(topic_prefix);
-    auto contract_trace = Topic<ContractStream>(topic_prefix);
+    auto transfer_log = Topic<TransferLog>(topic_prefix);
 
     kafka_config = {
         {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
@@ -83,10 +83,6 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
             produce(block);
             BlockInfo block_info(block_state, true);
             produce(block_info);
-            vector<ContractStream> contract_streams = ContractStream::get_contract_stream(block_state);
-            for (auto contract_stream : contract_streams) {
-                produce(contract_stream);
-            }
             for (int i = 0; i < block_state->block->transactions.size(); i++) {
                 TransactionReceipt transaction_receipt(block_state, i, true);
                 produce(transaction_receipt);
@@ -117,6 +113,9 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                 produce(atrace);
                 ActionInfo ainfo (trace, i);
                 produce(ainfo);
+                auto transfer_log = TransferLog::build_transfer_log(trace->action_traces[i]);
+                if (transfer_log)
+                    produce(*transfer_log);
                 if (!trace->action_traces[i].inline_traces.empty())
                     parent_actions.push(std::make_pair(trace->action_traces[i], atrace));
             }
@@ -128,6 +127,9 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                     produce(atrace);
                     ActionInfo ainfo(children.first, i);
                     produce(ainfo);
+                    auto transfer_log = TransferLog::build_transfer_log(children.first);
+                    if (transfer_log)
+                        produce(*transfer_log);
                     if (!children.first.inline_traces[i].inline_traces.empty()) {
                         parent_actions.push(std::make_pair(children.first.inline_traces[i], atrace)); 
                     }

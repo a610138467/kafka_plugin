@@ -192,7 +192,7 @@ fc::optional<TransferLog> TransferLog::build_transfer_log (const action_trace& a
     transfer_log.global_sequence = atrace.receipt.global_sequence;
 
     transfer_log.kafka_id = string(transfer_log.producer_block_id) + string(transfer_log.transaction_id);
-    const char* global_sequence_ptr = (const char*)(transfer_log.global_sequence);
+    const char* global_sequence_ptr = (const char*)(&transfer_log.global_sequence);
     for (int i = 0; i < sizeof(transfer_log.global_sequence); i ++) {
         char tmp[8];
         sprintf (tmp, "%02x", global_sequence_ptr[i]);

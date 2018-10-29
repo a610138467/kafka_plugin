@@ -1,7 +1,11 @@
 #include <fc/io/json.hpp>
 #include <eosio/kafka_plugin/hbase_types.hpp>
+#include <appbase/application.hpp>
+#include <eosio/chain_plugin/chain_plugin.hpp>
 
 namespace eosio{ namespace kafka{ namespace hbase{
+
+using namespace appbase;
 
 BlockState::BlockState (const block_state_ptr& block_state, bool irreversible) {
     kafka_id = string(block_state->id) + (irreversible ? "T" : "F"); 
@@ -68,7 +72,9 @@ TransactionTrace::TransactionTrace (const transaction_trace_ptr& transaction_tra
     elapsed = transaction_trace->elapsed;
     net_usage = transaction_trace->net_usage;
     scheduled = transaction_trace->scheduled;
-    action_traces = fc::json::to_string(transaction_trace->action_traces, fc::json::legacy_generator);
+    fc::variant action_traces_variant = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                                                transaction_trace->action_traces, fc::seconds(1));
+    action_traces = fc::json::to_string(action_traces_variant, fc::json::legacy_generator);
     failed_dtrx_trace = fc::json::to_string(transaction_trace->failed_dtrx_trace, fc::json::legacy_generator);
     if (transaction_trace->except) {
         except = transaction_trace->except->what();

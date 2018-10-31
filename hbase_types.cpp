@@ -187,7 +187,7 @@ ActionTrace::ActionTrace (const transaction_trace_ptr& trace, uint32_t index_in_
     if (action_variant.find("act") != action_variant.end()) {
         auto act_object = action_variant["act"].get_object();
         if (act_object.find("data") != act_object.end())
-            data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
+            data = fc::json::to_string(act_object["data"], fc::json::legacy_generator);
     }
     if (action_variant.find("producer_block_id") != action_variant.end())
         producer_block_id = action_variant["producer_block_id"].as<block_id_type>();
@@ -195,8 +195,6 @@ ActionTrace::ActionTrace (const transaction_trace_ptr& trace, uint32_t index_in_
         block_num = action_variant["block_num"].as<uint32_t>();
     if (action_variant.find("block_time") != action_variant.end())
         block_time = action_variant["block_time"].as<block_timestamp_type>();
-    if (action_variant.find("data") != action_variant.end())
-        data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
     action_json = fc::json::to_string(action_trace, fc::json::legacy_generator);
     action_bytes= fc::raw::pack(action_trace);
 }
@@ -241,7 +239,7 @@ ActionTrace::ActionTrace (const ActionTrace& parent, const action_trace& trace, 
     if (action_variant.find("act") != action_variant.end()) {
         auto act_object = action_variant["act"].get_object();
         if (act_object.find("data") != act_object.end())
-            data = fc::json::to_string(action_variant["data"], fc::json::legacy_generator);
+            data = fc::json::to_string(act_object["data"], fc::json::legacy_generator);
     }
     if (action_variant.find("producer_block_id") != action_variant.end())
         producer_block_id = action_variant["producer_block_id"].as<block_id_type>();

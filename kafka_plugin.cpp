@@ -49,6 +49,8 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
         {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
         {"socket.keepalive.enable", true},
         {"request.required.acks", 1},
+        {"compression.codec", "gzip"},
+        {"message.max.bytes", "5000000"},
     };
     this->start_block_num = options.at("kafka-start-block-num").as<uint32_t>();
     this->stop_block_num = options.at("kafka-stop-block-num").as<uint32_t>();
@@ -94,7 +96,7 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
         } catch (...) {
             elog ("Unknown Exception in kafka_plugin when irreversible block");
         }
-        ilog ("kafka_plug, current irreversible block_id : ${current_block_num}\n", ("current_block_num", current_block_num));
+        ilog ("kafka_plug, current irreversible block_id : ${current_block_num}", ("current_block_num", current_block_num));
         if (stop_block_num > start_block_num && current_block_num >= stop_block_num) {
             ilog ("kafka plugin stopped. [${from}-${to}]", ("from", start_block_num)("to", stop_block_num));
             plugin_shutdown();

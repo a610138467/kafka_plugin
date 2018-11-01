@@ -65,12 +65,17 @@ private:
     template<typename Materials> 
     void produce(Materials& materials) {
         auto payload = fc::json::to_string(materials, fc::json::legacy_generator);
-        cppkafka::Buffer key (materials.kafka_id.data(), materials.kafka_id.length());
         string topic = Topic<Materials>::value;
-        kafka_producer->produce(cppkafka::MessageBuilder(Topic<Materials>::value).partition(0).key(key).payload(payload));
-        ilog ("push 1 message to kafka topic ${topic}", ("topic", topic));
-        if (debug) {
-            dlog ("${topic} message : ${message}", ("topic", topic)("message", payload));
+        try {
+            cppkafka::Buffer key (materials.kafka_id.data(), materials.kafka_id.length());
+            kafka_producer->produce(cppkafka::MessageBuilder(Topic<Materials>::value).partition(-1).key(key).payload(payload));
+            ilog ("push 1 message to kafka topic ${topic} (size=${size})", ("topic", topic)("size", payload.length()));
+            if (debug) {
+                dlog ("${topic} message : ${message}", ("topic", topic)("message", payload));
+            }
+        } catch (const std::exception& ex) {
+            elog ("std Exception in kafka_plugin when produce ${key} to ${topic} : ${ex} \n payload(${size}) : \n${payload}", 
+			("key", materials.kafka_id)("topic", topic)("ex", ex.what())("size", payload.length())("payload", payload));
         }
     }
 

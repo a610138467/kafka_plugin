@@ -209,7 +209,9 @@ fc::optional<TransferLog> TransferLog::build_transfer_log (const action_trace& a
     TransferLog transfer_log;
     transfer_log.from_askey = data_object["from"].as<string>();
     transfer_log.to_askey = data_object["to"].as<string>();
-    transfer_log.amount = data_object["quantity"].as<asset>().to_real();
+    auto quantity = data_object["quantity"].as<asset>();
+    transfer_log.amount = quantity.to_real();
+    transfer_log.token_symbol_askey = quantity.symbol_name();
     if (data_object.find("memo") != data_object.end())
         transfer_log.memo = data_object["memo"].as<string>();
 
@@ -235,6 +237,189 @@ fc::optional<TransferLog> TransferLog::build_transfer_log (const action_trace& a
     transfer_log.primary_key = transfer_log.global_sequence;
     transfer_log.hbase_action_trace_key = transfer_log.kafka_id;
     res = transfer_log;
+    return res;
+}
+
+fc::optional<SetcodeLog> SetcodeLog::build_setcode_log (const action_trace& atrace) {
+    fc::optional<SetcodeLog> res;
+
+    string account = string(atrace.act.account);
+    string name = string(atrace.act.name);
+    if (!(account == "eosio" && name == "setcode")) return res;
+    auto atrace_object = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                            atrace, fc::seconds(1)).get_object();
+    if (atrace_object.find("act") == atrace_object.end()) return res;
+    auto act_object = atrace_object["act"].get_object();
+    if (act_object.find("data") == act_object.end()) return res;
+    auto data_object = act_object["data"].get_object();
+    if (! (data_object.find("account") != data_object.end()
+        && data_object.find("code") != data_object.end())) return res;
+    SetcodeLog setcode_log;
+    setcode_log.account_askey = data_object["account"].as<account_name>();
+    setcode_log.code = data_object["code"].as<bytes>();
+    if (act_object.find("vmtype") != act_object.end())
+        setcode_log.vmtype = data_object["vmtype"].as<uint8_t>();
+    if (act_object.find("vmversion") != act_object.end())
+        setcode_log.vmversion = data_object["vmversion"].as<uint8_t>();
+    setcode_log.action_global_id = atrace.receipt.global_sequence;
+
+    if (atrace_object.find("producer_block_id") != atrace_object.end())
+        setcode_log.block_id = atrace_object["producer_block_id"].as<block_id_type>();
+    if (atrace_object.find("block_num") != atrace_object.end())
+        setcode_log.block_num = atrace_object["block_num"].as<uint32_t>();
+    if (atrace_object.find("trx_id") != atrace_object.end())
+        setcode_log.transaction_id = atrace_object["trx_id"].as<transaction_id_type>();
+    if (atrace_object.find("block_time") != atrace_object.end())
+        setcode_log.block_time = atrace_object["block_time"].as<block_timestamp_type>(); 
+
+    setcode_log.kafka_id = string(setcode_log.block_id) + string(setcode_log.transaction_id);
+    const char* global_sequence_ptr = (const char*)(&setcode_log.action_global_id);
+    for (int i = 0; i < sizeof(setcode_log.action_global_id); i ++) {
+        char tmp[8];
+        sprintf (tmp, "%02x", global_sequence_ptr[i]);
+        setcode_log.kafka_id += tmp;
+    }
+    time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+    setcode_log.produce_timestamp = now.time_since_epoch().count();
+    setcode_log.primary_key = setcode_log.action_global_id;
+    setcode_log.hbase_action_trace_key = setcode_log.kafka_id;
+    res = setcode_log;
+    return res;
+}
+
+fc::optional<SetabiLog> SetabiLog::build_setabi_log (const action_trace& atrace) {
+    fc::optional<SetabiLog> res;
+
+    string account = string(atrace.act.account);
+    string name = string(atrace.act.name);
+    if (!(account == "eosio" && name == "setabi")) return res;
+    auto atrace_object = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                            atrace, fc::seconds(1)).get_object();
+    if (atrace_object.find("act") == atrace_object.end()) return res;
+    auto act_object = atrace_object["act"].get_object();
+    if (act_object.find("data") == act_object.end()) return res;
+    auto data_object = act_object["data"].get_object();
+    if (! (data_object.find("account") != data_object.end()
+        && data_object.find("abi") != data_object.end())) return res;
+    SetabiLog setabi_log;
+    setabi_log.account_askey = data_object["account"].as<account_name>();
+    setabi_log.abi = data_object["abi"].as<bytes>();
+    setabi_log.action_global_id = atrace.receipt.global_sequence;
+
+    if (atrace_object.find("producer_block_id") != atrace_object.end())
+        setabi_log.block_id = atrace_object["producer_block_id"].as<block_id_type>();
+    if (atrace_object.find("block_num") != atrace_object.end())
+        setabi_log.block_num = atrace_object["block_num"].as<uint32_t>();
+    if (atrace_object.find("trx_id") != atrace_object.end())
+        setabi_log.transaction_id = atrace_object["trx_id"].as<transaction_id_type>();
+    if (atrace_object.find("block_time") != atrace_object.end())
+        setabi_log.block_time = atrace_object["block_time"].as<block_timestamp_type>(); 
+
+    setabi_log.kafka_id = string(setabi_log.block_id) + string(setabi_log.transaction_id);
+    const char* global_sequence_ptr = (const char*)(&setabi_log.action_global_id);
+    for (int i = 0; i < sizeof(setabi_log.action_global_id); i ++) {
+        char tmp[8];
+        sprintf (tmp, "%02x", global_sequence_ptr[i]);
+        setabi_log.kafka_id += tmp;
+    }
+    time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+    setabi_log.produce_timestamp = now.time_since_epoch().count();
+    setabi_log.primary_key = setabi_log.action_global_id;
+    setabi_log.hbase_action_trace_key = setabi_log.kafka_id;
+    res = setabi_log;
+    return res;
+}
+
+fc::optional<TokenInfo> TokenInfo::build_token_info (const action_trace& atrace) {
+    fc::optional<TokenInfo> res;
+
+    string account = string(atrace.act.account);
+    string name = string(atrace.act.name);
+    if (!(account == "eosio.token" && name == "create")) return res;
+    auto atrace_object = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                            atrace, fc::seconds(1)).get_object();
+    if (atrace_object.find("act") == atrace_object.end()) return res;
+    auto act_object = atrace_object["act"].get_object();
+    if (act_object.find("data") == act_object.end()) return res;
+    auto data_object = act_object["data"].get_object();
+    if (! (data_object.find("issuer") != data_object.end()
+        && data_object.find("maximum_supply") != data_object.end())) return res;
+    TokenInfo token_info;
+    token_info.issuer_askey = data_object["issuer"].as<account_name>();
+    auto maximum_supply = data_object["maximum_supply"].as<asset>();
+    token_info.total_amount = maximum_supply.to_real();
+    token_info.token_symbol_askey = maximum_supply.symbol_name();
+    token_info.action_global_id = atrace.receipt.global_sequence;
+    
+    if (atrace_object.find("producer_block_id") != atrace_object.end())
+        token_info.block_id = atrace_object["producer_block_id"].as<block_id_type>();
+    if (atrace_object.find("block_num") != atrace_object.end())
+        token_info.block_num = atrace_object["block_num"].as<uint32_t>();
+    if (atrace_object.find("trx_id") != atrace_object.end())
+        token_info.transaction_id = atrace_object["trx_id"].as<transaction_id_type>();
+    if (atrace_object.find("block_time") != atrace_object.end())
+        token_info.block_time = atrace_object["block_time"].as<block_timestamp_type>();
+    
+    token_info.kafka_id = string(token_info.block_id) + string(token_info.transaction_id);
+    const char* global_sequence_ptr = (const char*)(&token_info.action_global_id);
+    for (int i = 0; i < sizeof(token_info.action_global_id); i ++) {
+        char tmp[8];
+        sprintf (tmp, "%02x", global_sequence_ptr[i]);
+        token_info.kafka_id += tmp;
+    }
+    time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+    token_info.produce_timestamp = now.time_since_epoch().count();
+    token_info.primary_key = token_info.action_global_id;
+    token_info.hbase_action_trace_key = token_info.kafka_id;
+    res = token_info;
+    return res;
+}
+
+fc::optional<IssueLog> IssueLog::build_issue_log (const action_trace& atrace) {
+    fc::optional<IssueLog> res;
+
+    string account = string(atrace.act.account);
+    string name = string(atrace.act.name);
+    if (!(account == "eosio.token" && name == "issue")) return res;
+    auto atrace_object = app().get_plugin<chain_plugin>().chain().to_variant_with_abi(
+                            atrace, fc::seconds(1)).get_object();
+    if (atrace_object.find("act") == atrace_object.end()) return res;
+    auto act_object = atrace_object["act"].get_object();
+    if (act_object.find("data") == act_object.end()) return res;
+    auto data_object = act_object["data"].get_object();
+    if (! (data_object.find("to") != data_object.end()
+        && data_object.find("quantity") != data_object.end())
+        && data_object.find("memo") != data_object.end()) return res;
+
+    IssueLog issue_log;
+    issue_log.to = data_object["to"].as<account_name>();
+    auto quantity = data_object["quantity"].as<asset>();
+    issue_log.amount = quantity.to_real();
+    issue_log.token_symbol_askey = quantity.symbol_name();
+    issue_log.memo = data_object["memo"].as<string>();
+    issue_log.action_global_id = atrace.receipt.global_sequence;
+    
+    if (atrace_object.find("producer_block_id") != atrace_object.end())
+        issue_log.block_id = atrace_object["producer_block_id"].as<block_id_type>();
+    if (atrace_object.find("block_num") != atrace_object.end())
+        issue_log.block_num = atrace_object["block_num"].as<uint32_t>();
+    if (atrace_object.find("trx_id") != atrace_object.end())
+        issue_log.transaction_id = atrace_object["trx_id"].as<transaction_id_type>();
+    if (atrace_object.find("block_time") != atrace_object.end())
+        issue_log.block_time = atrace_object["block_time"].as<block_timestamp_type>();
+    
+    issue_log.kafka_id = string(issue_log.block_id) + string(issue_log.transaction_id);
+    const char* global_sequence_ptr = (const char*)(&issue_log.action_global_id);
+    for (int i = 0; i < sizeof(issue_log.action_global_id); i ++) {
+        char tmp[8];
+        sprintf (tmp, "%02x", global_sequence_ptr[i]);
+        issue_log.kafka_id += tmp;
+    }
+    time_point<system_clock, milliseconds> now = time_point_cast<milliseconds>(system_clock::now());
+    issue_log.produce_timestamp = now.time_since_epoch().count();
+    issue_log.primary_key = issue_log.action_global_id;
+    issue_log.hbase_action_trace_key = issue_log.kafka_id;
+    res = issue_log;
     return res;
 }
 

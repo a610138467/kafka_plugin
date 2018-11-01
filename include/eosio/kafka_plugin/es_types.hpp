@@ -98,7 +98,7 @@ namespace eosio{ namespace kafka{ namespace es{
     /*
      * 这个结构体记录了Action的基本信息
      */
-     struct ActionInfo {
+    struct ActionInfo {
         string kafka_id;
         uint64_t produce_timestamp;
         uint64_t primary_key;
@@ -126,12 +126,12 @@ namespace eosio{ namespace kafka{ namespace es{
 
         ActionInfo (const transaction_trace_ptr& trace, uint32_t index_in_trace);
         ActionInfo (const action_trace& trace, uint32_t index_in_trace);
-     };
+    };
 
-     /*
-      * 记录转账信息
-      */
-     struct TransferLog {
+    /*
+     * 记录转账信息
+     */
+    struct TransferLog {
         string kafka_id;
         uint64_t produce_timestamp;
         uint64_t primary_key;
@@ -143,6 +143,7 @@ namespace eosio{ namespace kafka{ namespace es{
         account_name from_askey;
         account_name to_askey;
         double amount;
+        string token_symbol_askey;
         string memo;
 
         string hbase_action_trace_key;
@@ -150,6 +151,87 @@ namespace eosio{ namespace kafka{ namespace es{
         static fc::optional<TransferLog> build_transfer_log (const action_trace& atrace);
 
      };
+     /*
+      * 记录了合约的创建和更新的日志
+      */
+     struct SetcodeLog {
+        string kafka_id;
+        uint64_t produce_timestamp;
+        uint64_t primary_key;
+        account_name account_askey;
+        block_id_type block_id;
+        uint32_t block_num;
+        transaction_id_type transaction_id;
+        block_timestamp_type block_time;
+        uint64_t action_global_id;
+        uint8_t vmtype;
+        uint8_t vmversion;
+        bytes code;
+
+        string hbase_action_trace_key;
+
+        static fc::optional<SetcodeLog> build_setcode_log (const action_trace& atrace);
+    };
+    /*
+     * 记录了合约接口的更新日志
+     */
+    struct SetabiLog {
+        string kafka_id;     
+        uint64_t produce_timestamp;
+        uint64_t primary_key;
+        account_name account_askey;
+        block_id_type block_id;
+        uint32_t block_num;
+        transaction_id_type transaction_id;
+        block_timestamp_type block_time;
+        uint64_t action_global_id;
+        bytes abi;
+
+        string hbase_action_trace_key;
+
+        static fc::optional<SetabiLog> build_setabi_log (const action_trace& atrace);
+    };
+    /*
+     * 记录了代币的发行信息
+     */
+    struct TokenInfo {
+        string kafka_id;
+        uint64_t produce_timestamp;
+        uint64_t primary_key;
+        account_name issuer_askey;
+        double total_amount;
+        string token_symbol_askey;
+        block_id_type block_id;
+        uint32_t block_num;
+        transaction_id_type transaction_id;
+        block_timestamp_type block_time;
+        uint64_t action_global_id;
+        
+        string hbase_action_trace_key;
+
+        static fc::optional<TokenInfo> build_token_info (const action_trace& atrace);
+
+    };
+
+    struct IssueLog {
+        string kafka_id;
+        uint64_t produce_timestamp;
+        uint64_t primary_key;
+        account_name to;
+        double amount;
+        string token_symbol_askey;
+        string memo;
+        block_id_type block_id;
+        uint32_t block_num;
+        transaction_id_type transaction_id;
+        block_timestamp_type block_time;
+        uint64_t action_global_id;
+
+        string hbase_action_trace_key;
+
+        static fc::optional<IssueLog> build_issue_log (const action_trace& atrace);
+
+    };
 }}} //eosio::kafka::es
 
 FC_REFLECT (eosio::kafka::es::BlockInfo,
@@ -179,4 +261,25 @@ FC_REFLECT (eosio::kafka::es::ActionInfo,
 FC_REFLECT (eosio::kafka::es::TransferLog,
             (produce_timestamp)(primary_key)(producer_block_id)(block_num)(transaction_id)
             (global_sequence)(block_time)(from_askey)(to_askey)(amount)(memo)
+            (hbase_action_trace_key))
+
+FC_REFLECT (eosio::kafka::es::SetcodeLog,
+            (produce_timestamp)(primary_key)(account_askey)(block_id)(block_num)
+            (transaction_id)(block_time)(action_global_id)(vmtype)(vmversion)(code)
+            (hbase_action_trace_key))
+
+FC_REFLECT (eosio::kafka::es::SetabiLog,
+            (produce_timestamp)(primary_key)(account_askey)(block_id)(block_num)
+            (transaction_id)(block_time)(action_global_id)(abi)(hbase_action_trace_key))
+
+FC_REFLECT (eosio::kafka::es::TokenInfo,
+            (kafka_id)(produce_timestamp)(primary_key)(issuer_askey)
+            (total_amount)(token_symbol_askey)(block_id)(block_num)
+            (transaction_id)(block_time)(action_global_id)
+            (hbase_action_trace_key))
+
+FC_REFLECT (eosio::kafka::es::IssueLog,
+            (kafka_id)(produce_timestamp)(primary_key)(to)(amount)
+            (token_symbol_askey)(memo)(block_id)(block_num)
+            (transaction_id)(block_time)(action_global_id)
             (hbase_action_trace_key))

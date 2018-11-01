@@ -16,6 +16,10 @@ using eosio::kafka::es::BlockInfo;
 using eosio::kafka::es::TransactionInfo;
 using eosio::kafka::es::ActionInfo;
 using eosio::kafka::es::TransferLog;
+using eosio::kafka::es::SetcodeLog;
+using eosio::kafka::es::SetabiLog;
+using eosio::kafka::es::TokenInfo;
+using eosio::kafka::es::IssueLog;
 
 void kafka_plugin::set_program_options(options_description&, options_description& cfg) {
     cfg.add_options()
@@ -44,6 +48,10 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
     auto transaction_info = Topic<TransactionInfo>(topic_prefix);
     auto action_info = Topic<ActionInfo>(topic_prefix);
     auto transfer_log = Topic<TransferLog>(topic_prefix);
+    auto setcode_log = Topic<SetcodeLog>(topic_prefix);
+    auto setabi_log = Topic<SetabiLog>(topic_prefix);
+    auto token_info = Topic<TokenInfo>(topic_prefix);
+    auto issue_log = Topic<IssueLog>(topic_prefix);
 
     kafka_config = {
         {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
@@ -119,6 +127,18 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                 auto transfer_log = TransferLog::build_transfer_log(trace->action_traces[i]);
                 if (transfer_log)
                     produce(*transfer_log);
+                auto setcode_log = SetcodeLog::build_setcode_log(trace->action_traces[i]);
+                if (setcode_log)
+                    produce(*setcode_log);
+                auto setabi_log = SetabiLog::build_setabi_log(trace->action_traces[i]);
+                if (setabi_log)
+                    produce(*setabi_log);
+                auto token_info = TokenInfo::build_token_info(trace->action_traces[i]);
+                if (token_info)
+                    produce(*token_info);
+                auto issue_log = IssueLog::build_issue_log(trace->action_traces[i]);
+                if (issue_log)
+                    produce(*issue_log);
                 if (!trace->action_traces[i].inline_traces.empty())
                     parent_actions.push(std::make_pair(trace->action_traces[i], atrace));
             }
@@ -133,6 +153,18 @@ void kafka_plugin::plugin_initialize(const variables_map& options) {
                     auto transfer_log = TransferLog::build_transfer_log(children.first);
                     if (transfer_log)
                         produce(*transfer_log);
+                    auto setcode_log = SetcodeLog::build_setcode_log(trace->action_traces[i]);
+                    if (setcode_log)
+                        produce(*setcode_log);
+                    auto setabi_log = SetabiLog::build_setabi_log(trace->action_traces[i]);
+                    if (setabi_log)
+                        produce(*setabi_log);
+                    auto token_info = TokenInfo::build_token_info(trace->action_traces[i]);
+                    if (token_info)
+                        produce(*token_info);
+                    auto issue_log = IssueLog::build_issue_log(trace->action_traces[i]);
+                    if (issue_log)
+                        produce(*issue_log);
                     if (!children.first.inline_traces[i].inline_traces.empty()) {
                         parent_actions.push(std::make_pair(children.first.inline_traces[i], atrace)); 
                     }

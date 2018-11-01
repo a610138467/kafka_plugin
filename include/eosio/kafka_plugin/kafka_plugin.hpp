@@ -64,6 +64,7 @@ private:
 
     template<typename Materials> 
     void produce(Materials& materials) {
+        time_point<system_clock, milliseconds> begin = time_point_cast<milliseconds>(system_clock::now());
         auto payload = fc::json::to_string(materials, fc::json::legacy_generator);
         string topic = Topic<Materials>::value;
         try {
@@ -77,6 +78,9 @@ private:
             elog ("std Exception in kafka_plugin when produce ${key} to ${topic} : ${ex} \n payload(${size}) : \n${payload}", 
 			("key", materials.kafka_id)("topic", topic)("ex", ex.what())("size", payload.length())("payload", payload));
         }
+        time_point<system_clock, milliseconds> end = time_point_cast<milliseconds>(system_clock::now());
+        ilog ("produce message finish [topic=${topic}] [size=${size}] [cost=${cost}]", ("topic", topic)("size", payload.length())
+                                                                                       ("cost", (end - begin).count()));
     }
 
     boost::signals2::connection on_accepted_block_connection;

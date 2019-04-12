@@ -1,205 +1,138 @@
-#include <queue>
-#include <vector>
 #include <eosio/kafka_plugin/kafka_plugin.hpp>
-#include <eosio/kafka_plugin/hbase_types.hpp>
-#include <eosio/kafka_plugin/es_types.hpp>
+#include <boost/algorithm/string/join.hpp>
+#include <fc/io/json.hpp>
 
 namespace eosio {
 
-static appbase::abstract_plugin& _kafka_relay_plugin = app().register_plugin<kafka_plugin>();
+using namespace std;
+using bpo::variables_map;
+using bpo::options_description;
+namespace bpo = boost::program_options;
 
-using eosio::kafka::hbase::BlockState;
-using eosio::kafka::hbase::TransactionTrace;
-using eosio::kafka::hbase::TransactionReceipt;
-using eosio::kafka::hbase::ActionTrace;
-using eosio::kafka::es::BlockInfo;
-using eosio::kafka::es::TransactionInfo;
-using eosio::kafka::es::ActionInfo;
-using eosio::kafka::es::TransferLog;
-using eosio::kafka::es::SetcodeLog;
-using eosio::kafka::es::SetabiLog;
-using eosio::kafka::es::TokenInfo;
-using eosio::kafka::es::IssueLog;
+static auto& _kafka__plugin = app().register_plugin<kafka_plugin>();
 
 void kafka_plugin::set_program_options(options_description&, options_description& cfg) {
     cfg.add_options()
-            ("kafka-broker-list", bpo::value<string>()->default_value("127.0.0.1:9092"), 
-                "Kafka initial broker list, formatted as comma separated pairs of host or host:port, e.g., host1:port1,host2:port2")
-            ("kafka-topic-prefix", bpo::value<string>()->default_value("eosio"), "Kafka topic for message `block`")
-            ("kafka-start-block-num", bpo::value<uint32_t>()->default_value(0), "from which block begin")
-            ( "kafka-stop-block-num", bpo::value<uint32_t>()->default_value(0), "to which block stop. will not stop if less than start-block-num")
-            ("kafka-debug", bpo::value<bool>()->default_value(false), "print the kafka message, if true")
-            ;
+        ("kafka-plugin-enable", bpo::value<bool>()->default_value(false), "weather enable the kafka_plugin")
+        ("kafka-plugin-broker", bpo::value<vector<string> >()->composing(),   "kafka broker addr, can have more than one")
+        ("kafka-plugin-enable-accepted-block-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from accepted_block callback")
+        ("kafka-plugin-accepted-block-topic-name", bpo::value<string>()->default_value("eosio.accepted.block"), "the topic name of accepted_block")
+        ("kafka-plugin-enable-irreversible-block-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from irreversible_block callback")
+        ("kafka-plugin-irreversible-block-topic-name", bpo::value<string>()->default_value("eosio.irreversible.block"), "the topic name ofr irreversible_block")
+        ("kafka-plugin-enable-applied-transaction-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from applied_transaction callback")
+        ("kafka-plugin-applied-transaction-topic-name", bpo::value<string>()->default_value("eosio.applied.transaction"), "the topic name of applied_transaction")
+        ("kafka-plugin-enable-accepted-transaction-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from accepted_transaction callback")
+        ("kafka-plugin-accepted-transaction-topic-name", bpo::value<string>()->default_value("eosio.accepted.transaction"), "the topic name of accepted_transaction")
+        ;
 }
 
-template <typename Class>
-std::string kafka_plugin::Topic<Class>::value;
-
 void kafka_plugin::plugin_initialize(const variables_map& options) {
-
-    ilog("Initialize kafka plugin");
-
-    topic_prefix = options.at("kafka-topic-prefix").as<string>();
-    auto block_topic = Topic<BlockState>(topic_prefix);
-    auto transaction_trace = Topic<TransactionTrace>(topic_prefix);
-    auto transaction_receipt = Topic<TransactionReceipt>(topic_prefix);
-    auto atrace = Topic<ActionTrace>(topic_prefix);
-    auto block_info = Topic<BlockInfo>(topic_prefix);
-    auto transaction_info = Topic<TransactionInfo>(topic_prefix);
-    auto action_info = Topic<ActionInfo>(topic_prefix);
-    auto transfer_log = Topic<TransferLog>(topic_prefix);
-    auto setcode_log = Topic<SetcodeLog>(topic_prefix);
-    auto setabi_log = Topic<SetabiLog>(topic_prefix);
-    auto token_info = Topic<TokenInfo>(topic_prefix);
-    auto issue_log = Topic<IssueLog>(topic_prefix);
-
-    kafka_config = {
-        {"metadata.broker.list", options.at("kafka-broker-list").as<string>()},
+    //get parameters from options
+    enable = options.at("kafka-plugin-enable").as<bool>();
+    vector<string> brokers = options.count("kafka-plugin-broker") > 0 ? options.at("kafka-plugin-broker").as<vector<string> >() : vector<string>();
+    bool enable_accepted_block_connection = options.at("kafka-plugin-enable-accepted-block-connection").as<bool>();
+    string accepted_block_topic_name = options.at("kafka-plugin-accepted-block-topic-name").as<string>();
+    bool enable_irreversible_block_connection = options.at("kafka-plugin-enable-irreversible-block-connection").as<bool>();
+    string irreversible_block_topic_name = options.at("kafka-plugin-irreversible-block-topic-name").as<string>();
+    bool enable_applied_transaction_connection = options.at("kafka-plugin-enable-applied-transaction-connection").as<bool>();
+    string applied_transaction_topic_name = options.at("kafka-plugin-applied-transaction-topic-name").as<string>();
+    bool enable_accepted_transaction_connection = options.at("kafka-plugin-enable-accepted-transaction-connection").as<bool>();
+    string accepted_transaction_topic_name = options.at("kafka-plugin-accepted-transaction-topic-name").as<string>();
+    //check parameters, determin weather enable kafka_plugin
+    if (!enable) return;
+    if (brokers.size() == 0) {
+        wlog ("enable kafka_plugin, but no broker addr found, kafka_plugin will be disabled");
+        return;
+    }
+    if (enable_accepted_block_connection && accepted_block_topic_name == "") {
+        wlog ("enable data stream from accepted_block, but no topic name defined. data stream from accepted_block will be disabled");
+        enable_accepted_block_connection = false;
+    }
+    if (enable_irreversible_block_connection && irreversible_block_topic_name == "") {
+        wlog ("enable data stream from irreversible_block, but no topic name defined. data stream from irreversible_block will be disabled");
+        enable_irreversible_block_connection = false;
+    }
+    if (enable_applied_transaction_connection && applied_transaction_topic_name == "") {
+        wlog ("enable data stream from applied_transaction, but no topic name defined. data stream from applied_transaction will be disabled");
+        enable_applied_transaction_connection = false;
+    }
+    if (enable_accepted_transaction_connection && accepted_transaction_topic_name == "") {
+        wlog ("enable data stream from accepted_transaction, but no topic name defined. data stream from accepted_transaction will be disabled");
+        enable_accepted_transaction_connection = false;
+    }
+    if (!(enable_accepted_block_connection || enable_irreversible_block_connection || enable_applied_transaction_connection || enable_accepted_transaction_connection)) {
+        wlog ("found kafka brokers,but no data stream avaliable, kafka_plugin will be disabled");
+        return;
+    }
+    //create kafka producer
+    cppkafka::Configuration kafka_config = {
+        {"metadata.broker.list", boost::join(options.at("kafka-plugin-broker").as<vector<string> >(), ",")},
         {"socket.keepalive.enable", true},
         {"request.required.acks", 1},
         {"compression.codec", "gzip"},
-        {"message.max.bytes", "5000000"},
     };
-    this->start_block_num = options.at("kafka-start-block-num").as<uint32_t>();
-    this->stop_block_num = options.at("kafka-stop-block-num").as<uint32_t>();
-    this->debug = options.at("kafka-debug").as<bool>();
-    this->current_block_num = 0;
-
+    kafka_producer = std::make_unique<cppkafka::Producer>(kafka_config);
+    auto conf = kafka_producer->get_configuration().get_all();
+    dlog ("Kafka config : ${conf}", ("conf", conf));
+    //registe data stream
     auto& chain = app().get_plugin<chain_plugin>().chain();
-    on_accepted_block_connection = chain.accepted_block.connect([=](const block_state_ptr& block_state) {
-        if (current_block_num < start_block_num) return;
-        try {
-            BlockState block(block_state, false);
-            produce(block);
-            BlockInfo block_info(block_state, false);
-            produce(block_info);
-            for (int i = 0; i < block_state->block->transactions.size(); i++) {
-                TransactionReceipt transaction_receipt(block_state, i, false);
-                produce(transaction_receipt);
-                TransactionInfo transaction_info(block_state, i, false);
-                produce(transaction_info);
-            }
-        } catch (const std::exception& ex) {
-            elog ("std Exception in kafka_plugin when accept block : ${ex}", ("ex", ex.what()));
-        } catch (...) {
-            elog ("Unknown Exception in kafka_plugin when accept block");
-        }
-    });
-    on_irreversible_block_connection = chain.irreversible_block.connect([=](const block_state_ptr& block_state) {
-        current_block_num = block_state->block_num;
-        if (current_block_num < start_block_num) return;
-        try {
-            BlockState block(block_state, true);
-            produce(block);
-            BlockInfo block_info(block_state, true);
-            produce(block_info);
-            for (int i = 0; i < block_state->block->transactions.size(); i++) {
-                TransactionReceipt transaction_receipt(block_state, i, true);
-                produce(transaction_receipt);
-                TransactionInfo transaction_info(block_state, i, true);
-                produce(transaction_info);
-            }
-        } catch (const std::exception& ex) {
-            elog ("std Exception in kafka_plugin when irreversible block : ${ex}", ("ex", ex.what()));
-        } catch (...) {
-            elog ("Unknown Exception in kafka_plugin when irreversible block");
-        }
-        ilog ("kafka_plug, current irreversible block_id : ${current_block_num}", ("current_block_num", current_block_num));
-        if (stop_block_num > start_block_num && current_block_num >= stop_block_num) {
-            ilog ("kafka plugin stopped. [${from}-${to}]", ("from", start_block_num)("to", stop_block_num));
-            plugin_shutdown();
-            app().quit();
-        }
-    });
-    on_applied_transaction_connection = chain.applied_transaction.connect([=](const transaction_trace_ptr& trace) {
-        if (current_block_num < start_block_num) return;
-        try {
-            TransactionTrace transaction_trace(trace);
-            produce(transaction_trace);
-            TransactionInfo transaction_info(trace);
-            produce(transaction_info);
-            queue<pair<action_trace, ActionTrace> > parent_actions;
-            for (int i = 0; i < trace->action_traces.size(); i++) {
-                ActionTrace atrace(trace, i);
-                produce(atrace);
-                ActionInfo ainfo (trace, i);
-                produce(ainfo);
-                auto transfer_log = TransferLog::build_transfer_log(trace->action_traces[i]);
-                if (transfer_log)
-                    produce(*transfer_log);
-                auto setcode_log = SetcodeLog::build_setcode_log(trace->action_traces[i]);
-                if (setcode_log)
-                    produce(*setcode_log);
-                auto setabi_log = SetabiLog::build_setabi_log(trace->action_traces[i]);
-                if (setabi_log)
-                    produce(*setabi_log);
-                auto token_info = TokenInfo::build_token_info(trace->action_traces[i]);
-                if (token_info)
-                    produce(*token_info);
-                auto issue_log = IssueLog::build_issue_log(trace->action_traces[i]);
-                if (issue_log)
-                    produce(*issue_log);
-                if (!trace->action_traces[i].inline_traces.empty())
-                    parent_actions.push(std::make_pair(trace->action_traces[i], atrace));
-            }
-            while (!parent_actions.empty()) {
-                auto children = parent_actions.front();
-                parent_actions.pop();
-                for (int i = 0; i < children.first.inline_traces.size(); i ++) {
-                    ActionTrace atrace(children.second, children.first, i);
-                    produce(atrace);
-                    ActionInfo ainfo(children.first, i);
-                    produce(ainfo);
-                    auto transfer_log = TransferLog::build_transfer_log(children.first);
-                    if (transfer_log)
-                        produce(*transfer_log);
-                    auto setcode_log = SetcodeLog::build_setcode_log(trace->action_traces[i]);
-                    if (setcode_log)
-                        produce(*setcode_log);
-                    auto setabi_log = SetabiLog::build_setabi_log(trace->action_traces[i]);
-                    if (setabi_log)
-                        produce(*setabi_log);
-                    auto token_info = TokenInfo::build_token_info(trace->action_traces[i]);
-                    if (token_info)
-                        produce(*token_info);
-                    auto issue_log = IssueLog::build_issue_log(trace->action_traces[i]);
-                    if (issue_log)
-                        produce(*issue_log);
-                    if (!children.first.inline_traces[i].inline_traces.empty()) {
-                        parent_actions.push(std::make_pair(children.first.inline_traces[i], atrace)); 
-                    }
-                }
-            }
-        } catch (const std::exception& ex) {
-            elog ("std Exception in kafka_plugin when applied transaction : ${ex}", ("ex", ex.what()));
-        } catch (...) {
-            elog ("Unknown Exception in kafka_plugin when applied transaction");
-        }
-    });
+    if (enable_accepted_block_connection) {
+        on_accepted_block_connection = chain.accepted_block.connect([=](const block_state_ptr& block_state) {
+            produce_data (accepted_block_topic_name, block_state->id, block_state);
+        });
+    }
+    if (enable_irreversible_block_connection) {
+        on_irreversible_block_connection = chain.irreversible_block.connect([=](const block_state_ptr& block_state) {
+            produce_data (irreversible_block_topic_name, block_state->id, block_state);
+        });
+    }
+    if (enable_applied_transaction_connection) {
+        on_applied_transaction_connection = chain.applied_transaction.connect([=](const transaction_trace_ptr& transaction_trace) {
+            produce_data (applied_transaction_topic_name, transaction_trace->id, transaction_trace);
+        });
+    }
+    if (enable_accepted_transaction_connection) {
+        on_accepted_transaction_connection = chain.accepted_transaction.connect([=](const transaction_metadata_ptr& transaction_metadata) {
+            produce_data (accepted_transaction_topic_name, transaction_metadata->id, transaction_metadata);
+        });
+    }
 }
 
 void kafka_plugin::plugin_startup() {
-    ilog("Starting kafka_plugin");
-    kafka_producer = std::make_unique<cppkafka::Producer>(kafka_config);
-    auto conf = kafka_producer->get_configuration().get_all();
-    ilog ("Kafka config : ${conf}", ("conf", conf));
+    if (!enable) return;
+    ilog ("kafka_plugin startup");
 }
 
 void kafka_plugin::plugin_shutdown() {
-    ilog("Stopping kafka_plugin");
-    on_accepted_block_connection.disconnect();
-    on_irreversible_block_connection.disconnect();
-    on_applied_transaction_connection.disconnect();
-    for (int i = 0; i < 5; i ++) {
-        //flush有失败的情况
+    if (!enable) return;
+    //sometimes the flush will be failed, try more time will be usefull
+    for (int i = 0; i < 5; i++) {
         try {
             kafka_producer->flush();
-            ilog ("kafka flush finish");
+            ilog ("kafka producer flush finish");
             kafka_producer.reset();
-            break;
         } catch (const std::exception& ex) {
-            elog("std Exception in kafka_plugin when shutdown: ${ex}, try again(${index}/5", ("ex", ex.what())("index", i));
+            elog ("std Exception when flush kafka producer : ${ex} try again(${i}/5)", ("ex", ex.what())("i", i));
         }
+    }
+    ilog ("kafka_plugin shutdown");
+}
+
+template <typename KEY, typename OBJ>
+void kafka_plugin::produce_data (const string& topic, const KEY& key, const OBJ& obj, int partition) {
+    try{
+        string key_str = string(key);
+        cppkafka::Buffer key_kafka(key_str.data(), key_str.length());
+        auto tvariant = app().get_plugin<chain_plugin>()
+            .chain().to_variant_with_abi(obj, fc::seconds(10));
+        auto payload = fc::json::to_string(tvariant, fc::json::legacy_generator);
+        kafka_producer->produce(cppkafka::MessageBuilder(topic).key(key_kafka).payload(payload).partition(partition));
+    } catch (const std::exception& ex) {
+        elog ("std Exception in data_plugin when accept block : ${ex}", ("ex", ex.what()));
+    } catch ( fc::exception& ex) {
+        wlog( "fc Exception in data_plugin when accept block : ${ex}", ("ex", ex.to_detail_string()) );
+    } catch (...) {
+        elog ("Unknown Exception in data_plugin when accept block");
     }
 }
 

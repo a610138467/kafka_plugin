@@ -2,7 +2,7 @@
 
 ## 说明
 
-提供将eosio的区块链数据导入到kafka的功能。支持kafka集群。
+将eos的数据导入到kafka集群,该plugin只负责导入原始数据，具体的输出处理应该由Kafak Stream进一步完成
 
 ## 依赖
 
@@ -51,17 +51,13 @@ cd ..
 
 参数名称 | 参数说明
 ------ | --------
-kafka-enable | 是否启动
-kafka-broker-list | kafka地址，多个地址用","分割
-kafka-block-topic | 存储blocks信息的topic名称
-kafka-transaction-topic | 存储transaction信息的topic名称
-kafka-transaction-trace-topic | 存储transaction-trace信息的topic名称
-kafka-action-topic | 存储action信息的topic名称
-kafka-batch-num-messages | 缓存消息数目
-kafka-queue-buffering-max-ms | 缓存消息最大数
-kafka-compression-codec | 消息压缩格式
-kafka-request-required-acks | 是否确认
-kafka-message-send-max-retries | 重试次数
-kafka-start-block-num | 开始数
-kafka-statistics-interval-ms | 静态分析的时间间隔
-kafka-fixed-partition | partition值
+kafka-plugin-enable | 是否启动
+kafka-plugin-broker | kafka地址，可以提供多个
+kafka-plugin-enable-accepted-block-connection|是否允许从accepted\_block回调获取数据导入到kafka
+kafka-plugin-accepted-block-topic-name|如果允许,accepted\_block回调的数据导入到哪个topic中
+kafka-plugin-enable-irreversible-block-connection|是否允许从irreversible\_block回调获取数据导入到kafka
+kafka-plugin-irreversible-block-topic-name|如果允许,irreversible\_block回调的数据导入到哪个topic中
+kafka-plugin-enable-applied-transaction-connection|是否允许从applied\_transaction回调获取数据导入到kafka
+kafka-plugin-applied-transaction-topic-name|如果允许,applied\_transaction回调获取的数据导入到哪个topic中
+kafka-plugin-enable-accepted-transaction-connection|是否允许从accepted\_transaction回调获取数据导入到kafka中
+kafka-plugin-accepted-transaction-topic-name|如果允许,accepted\_transaction回调获取的数据导入到哪个topic中

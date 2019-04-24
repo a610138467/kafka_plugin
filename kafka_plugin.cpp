@@ -13,15 +13,15 @@ static auto& _kafka__plugin = app().register_plugin<kafka_plugin>();
 
 void kafka_plugin::set_program_options(options_description&, options_description& cfg) {
     cfg.add_options()
-        ("kafka-plugin-enable", bpo::value<bool>()->default_value(false), "weather enable the kafka_plugin")
+        ("kafka-plugin-enable", bpo::bool_switch()->default_value(false), "weather enable the kafka_plugin")
         ("kafka-plugin-broker", bpo::value<vector<string> >()->composing(),   "kafka broker addr, can have more than one")
-        ("kafka-plugin-enable-accepted-block-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from accepted_block callback")
+        ("kafka-plugin-enable-accepted-block-connection", bpo::bool_switch()->default_value(false), "enable the data stream that from accepted_block callback")
         ("kafka-plugin-accepted-block-topic-name", bpo::value<string>()->default_value("eosio.accepted.block"), "the topic name of accepted_block")
-        ("kafka-plugin-enable-irreversible-block-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from irreversible_block callback")
+        ("kafka-plugin-enable-irreversible-block-connection", bpo::bool_switch()->default_value(false), "enable the data stream that from irreversible_block callback")
         ("kafka-plugin-irreversible-block-topic-name", bpo::value<string>()->default_value("eosio.irreversible.block"), "the topic name ofr irreversible_block")
-        ("kafka-plugin-enable-applied-transaction-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from applied_transaction callback")
+        ("kafka-plugin-enable-applied-transaction-connection", bpo::bool_switch()->default_value(false), "enable the data stream that from applied_transaction callback")
         ("kafka-plugin-applied-transaction-topic-name", bpo::value<string>()->default_value("eosio.applied.transaction"), "the topic name of applied_transaction")
-        ("kafka-plugin-enable-accepted-transaction-connection", bpo::value<bool>()->default_value(false), "enable the data stream that from accepted_transaction callback")
+        ("kafka-plugin-enable-accepted-transaction-connection", bpo::bool_switch()->default_value(false), "enable the data stream that from accepted_transaction callback")
         ("kafka-plugin-accepted-transaction-topic-name", bpo::value<string>()->default_value("eosio.accepted.transaction"), "the topic name of accepted_transaction")
         ;
 }
@@ -111,6 +111,7 @@ void kafka_plugin::plugin_shutdown() {
             kafka_producer->flush();
             ilog ("kafka producer flush finish");
             kafka_producer.reset();
+            break;
         } catch (const std::exception& ex) {
             elog ("std Exception when flush kafka producer : ${ex} try again(${i}/5)", ("ex", ex.what())("i", i));
         }
